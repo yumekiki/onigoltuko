@@ -390,17 +390,12 @@ function setupListeners(){
     allPlayers = arr;
     localPlayer = allPlayers.find(p => p._id === sessionId) || localPlayer;
     // counts
-// counts
-const oniCount = allPlayers.filter(p => p.team === "oni").length;
-const runnerCount = allPlayers.filter(p => p.team === "runner").length;
-
-document.getElementById("oniCount")?.textContent = "人数: " + oniCount;
-document.getElementById("runnerCount")?.textContent = "人数: " + runnerCount;
-
-// ✅ nullでも落ちないようにする
-waitOniCount?.textContent = oniCount;
-waitRunnerCount?.textContent = runnerCount;
-
+    const oniCount = allPlayers.filter(p => p.team === "oni").length;
+    const runnerCount = allPlayers.filter(p => p.team === "runner").length;
+    document.getElementById("oniCount")?.textContent = "人数: " + oniCount;
+    document.getElementById("runnerCount")?.textContent = "人数: " + runnerCount;
+    waitOniCount.textContent = oniCount;
+    waitRunnerCount.textContent = runnerCount;
     if (localPlayer){ playerInfoName.textContent = localPlayer.name; playerInfoTeam.textContent = "チーム: " + localPlayer.team; } else { playerInfoName.textContent = "未参加"; playerInfoTeam.textContent = "チーム: -"; }
     renderPlayerList();
   });
