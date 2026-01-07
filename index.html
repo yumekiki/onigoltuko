@@ -1,226 +1,133 @@
+
 <!doctype html>
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>マルチプレイ基盤 - 完全版（Firestore v12.7.0）</title>
+<title>マルチプレイ基盤 - 完全版（修正版）</title>
 <style>
   :root{
-    --bg:#0d0f12; --panel:#111317; --accent:#ff6b6b; --oni:#ffcf4d; --runner:#4db8ff;
-    --muted:#9aa3ad; --bubble:rgba(0,0,0,0.65);
-    --good:#d4f7d4; --warn:#ffd9b3; --bad:#ffb3b3;
+    --bg:#0d0f12; --panel:#111317; --oni:#ffcf4d; --runner:#4db8ff; --muted:#9aa3ad;
   }
-  * { box-sizing: border-box; }
-  body{ margin:0; font-family:system-ui, "Hiragino Kaku Gothic ProN", "メイリオ", sans-serif; background:var(--bg); color:#e6eef6; }
-  #app{ display:flex; height:100vh; gap:12px; padding:12px; }
-  #left{ flex:1; display:flex; flex-direction:column; gap:12px; align-items:center; }
-  #right{ width:380px; background:linear-gradient(180deg,#0b0d10 0%, #0f1113 100%); box-shadow:-6px 0 18px rgba(0,0,0,.6); padding:14px; display:flex; flex-direction:column; gap:12px; border-radius:10px; }
-  canvas{ border-radius:8px; background:#081018; display:block; }
-  .panel{ background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); padding:12px; border-radius:8px; width:100%; box-sizing:border-box; }
-  .center{ text-align:center; }
-  button{ background:transparent; border:1px solid rgba(255,255,255,0.06); color:inherit; padding:10px 14px; border-radius:8px; cursor:pointer; }
-  .big{ font-size:1.05rem; padding:12px 16px; }
-  .teamBtn{ display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px; border-radius:10px; }
-  .oniBtn{ background:linear-gradient(90deg,#ffecb3,#ffd54d); color:#111; }
-  .runnerBtn{ background:linear-gradient(90deg,#bfe8ff,#4db8ff); color:#022033; }
-  .small{ font-size:0.85rem; color:var(--muted); }
-  #topBar{ display:flex; justify-content:space-between; gap:12px; align-items:center; }
-  #scores{ display:flex; gap:12px; align-items:center; }
-  .scoreBox{ background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:8px; display:flex; gap:8px; align-items:center; }
-  #log{ flex:1; overflow:auto; padding:8px; background:transparent; border-radius:6px; }
-  .logItem{ margin-bottom:6px; font-size:0.95rem; padding:6px 8px; border-radius:8px; }
-  .log-info{ background: rgba(255,255,255,0.02); color:#dbe9ff; }
-  .log-event{ background: rgba(255,215,170,0.06); color:#fff0df; }
-  .log-error{ background: rgba(255,80,80,0.06); color:#ffd3d3; }
-  #adminSmall{ position:fixed; left:12px; top:12px; background:rgba(0,0,0,0.35); padding:6px 8px; border-radius:6px; font-size:.85rem; cursor:pointer; }
-  .hidden{ display:none; }
-  .nameInput{ padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background:transparent; color:inherit; width:220px; }
-  #playerList{ max-height:220px; overflow:auto; padding:6px; display:flex; flex-direction:column; gap:6px; }
-  .playerRow{ display:flex; justify-content:space-between; align-items:center; padding:8px; border-radius:6px; background:rgba(255,255,255,0.02); }
-  .minimap{ width:100%; height:140px; border-radius:6px; background:#041218; display:block; }
-  .mapImageNote{ font-size:0.8rem; color:var(--muted); margin-top:6px; }
-  .controlRow{ display:flex; gap:8px; align-items:center; }
-  .kickBtn{ padding:6px 8px; border-radius:6px; background:#ff6b6b; border:none; color:#111; cursor:pointer; }
-  .coord { color: #9fb8c8; font-size:0.85rem; }
-  .rulesText { white-space:pre-wrap; font-size:0.95rem; color:#dfe9f4; }
-  #loadingOverlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:9999; color:#fff; font-size:1.1rem; display:none; }
-  #boostStatus { margin-top:8px; font-weight:700; color:#bfffbf; text-align:center; min-height:22px; }
-  #dashStatus { font-weight:700; color:#ffd; margin-left:10px; }
-  /* cute touches */
-  h2 { margin:4px 0 8px 0; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui, "Hiragino Kaku Gothic ProN","メイリオ",sans-serif;background:var(--bg);color:#e6eef6}
+  #app{display:flex;gap:12px;padding:12px}
+  #left{flex:1;display:flex;flex-direction:column;gap:12px}
+  #right{width:380px;background:linear-gradient(180deg,#0b0d10,#0f1113);padding:14px;border-radius:10px}
+  canvas{border-radius:8px;background:#081018;display:block}
+  .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:12px;border-radius:8px}
+  h2{margin:4px 0 8px}
+  .small{font-size:0.85rem;color:var(--muted)}
+  .big{font-size:1.05rem;padding:10px 14px;border-radius:10px}
+  .teamBtn{display:flex;justify-content:space-between;align-items:center;padding:14px;border-radius:10px;border:none;cursor:pointer}
+  .oniBtn{background:linear-gradient(90deg,#ffecb3,#ffd54d);color:#111}
+  .runnerBtn{background:linear-gradient(90deg,#bfe8ff,#4db8ff);color:#022033}
+  #log{max-height:140px;overflow:auto}
+  .logItem{margin-bottom:8px;padding:8px;border-radius:8px}
+  .log-info{background:rgba(255,255,255,0.02)}
+  .log-event{background:rgba(255,215,170,0.06)}
+  .log-error{background:rgba(255,80,80,0.06)}
+  .playerRow{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:6px;background:rgba(255,255,255,0.02);margin-bottom:6px}
+  .kickBtn{padding:6px 8px;border-radius:6px;background:#ff6b6b;border:none;color:#111;cursor:pointer}
+  #loadingOverlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;z-index:9999}
+  #boostStatus{margin-top:8px;font-weight:700;color:#bfffbf;text-align:center;min-height:22px}
+  #dashStatus{font-weight:700;color:#ffd;margin-left:10px}
 </style>
 </head>
 <body>
-<div id="adminSmall">管理</div>
-
+<div id="loadingOverlay">処理中... 少しお待ちください</div>
 <div id="app">
   <div id="left">
-    <!-- Waiting / Rules -->
     <div id="screen-waiting" class="panel">
-      <div class="center">
-        <h2>待機 / ルール</h2>
-        <p class="small">参加するを押すとチーム選択へ。管理は右上「管理」から強制リセット可能。</p>
-        <div style="margin-top:12px; display:flex; gap:8px; justify-content:center;">
-          <button id="toTeamBtn" class="big">参加する</button>
-          <button id="homeResetBtn" class="big">強制リセット</button>
-        </div>
+      <h2>待機 / ルール</h2>
+      <p class="small">参加するを押すとチーム選択へ。管理は右上の「管理」から強制リセット可能。</p>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="toTeamBtn" class="big">参加する</button>
+        <button id="homeResetBtn" class="big">強制リセット</button>
       </div>
-
-      <div style="margin-top:12px;">
-        <div class="rulesText">
+      <div style="margin-top:12px" class="small">
 1ラウンド制・途中参加可・アカウント不要。
-鬼 (▢) はマップ全体可視、ダッシュ(3秒、CT 10秒)。
-逃げ (〇) は自分中心の視界。イチゴ(・)は2人揃うと回収、各人 +1。
-納品所(△) に近づくと自分の所持イチゴがチームスコアに変換され 0 になります。
-鬼が捕まえると鬼チーム +5 点。
-先にチームスコアが 50 になったチームが勝ち、即リセットします。
-map.png を置くとマップ背景に反映されます。
-        </div>
+鬼 (▢) は全体可視。Shiftでダッシュ（3秒、CT10秒）。
+逃げ (〇) は自分中心の視界。イチゴ(・)は2人揃うと回収（各+1）。
+納品所(△) に近づくと所持がチームスコアに変換され0になる。
+鬼が捕まえると鬼チーム +5点。先に50点達成で即勝利・リセット。
       </div>
-
-      <div style="margin-top:8px;" class="small center">チーム人数 — 鬼: <span id="waitOniCount">0</span> / 逃げ: <span id="waitRunnerCount">0</span></div>
+      <div style="margin-top:8px" class="small">鬼: <span id="waitOniCount">0</span> / 逃げ: <span id="waitRunnerCount">0</span></div>
     </div>
 
-    <!-- Team selection -->
     <div id="screen-team" class="panel hidden">
-      <h2 class="center">チームを選んでください</h2>
-      <div style="display:flex; gap:12px; margin-top:12px;">
-        <div style="flex:1;">
-          <button id="chooseOni" class="teamBtn oniBtn">
-            <div>
-              <div style="font-weight:700;">👹 鬼チーム</div>
-              <div class="small" id="oniCount">人数: 0</div>
-            </div>
-            <div class="scoreBox">
-              <div class="small">スコア</div><div id="oniScore">0</div>
-            </div>
-          </button>
-        </div>
-        <div style="flex:1;">
-          <button id="chooseRunner" class="teamBtn runnerBtn">
-            <div>
-              <div style="font-weight:700;">🏃 逃げチーム</div>
-              <div class="small" id="runnerCount">人数: 0</div>
-            </div>
-            <div class="scoreBox">
-              <div class="small">スコア</div><div id="runnerScore">0</div>
-            </div>
-          </button>
-        </div>
+      <h2>チームを選んでください</h2>
+      <div style="display:flex;gap:12px">
+        <button id="chooseOni" class="teamBtn oniBtn">
+          <div><div style="font-weight:700">👹 鬼</div><div class="small" id="oniCount">人数: 0</div></div>
+          <div class="small">スコア: <span id="oniScore">0</span></div>
+        </button>
+        <button id="chooseRunner" class="teamBtn runnerBtn">
+          <div><div style="font-weight:700">🏃 逃げ</div><div class="small" id="runnerCount">人数: 0</div></div>
+          <div class="small">スコア: <span id="runnerScore">0</span></div>
+        </button>
       </div>
-      <div style="margin-top:10px;" class="muted center">押すとチーム選択画面へ（まだ参加はしません）</div>
-      <div style="margin-top:12px;" class="center">
-        <button id="backFromTeam">戻る</button>
-      </div>
+      <div style="margin-top:12px;text-align:center"><button id="backFromTeam">戻る</button></div>
     </div>
 
-    <!-- Join -->
     <div id="screen-join" class="panel hidden">
-      <h2 class="center">名前を入力して参加</h2>
-      <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin-top:8px;">
-        <input id="inputName" class="nameInput" placeholder="名前を入力" maxlength="16" />
-        <button id="joinNow">参加</button>
+      <h2>名前を入力して参加</h2>
+      <div style="display:flex;gap:8px;align-items:center;justify-content:center">
+        <input id="inputName" class="nameInput" placeholder="名前" maxlength="16" style="padding:8px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;width:220px">
+        <button id="joinNow" class="big">参加</button>
       </div>
-      <div style="margin-top:8px;" class="center muted">
-        <button id="backFromJoin">戻る</button>
-      </div>
+      <div style="text-align:center;margin-top:8px"><button id="backFromJoin">戻る</button></div>
     </div>
 
-    <!-- Game -->
-    <div id="screen-game" class="panel hidden" style="width:100%;">
-      <div id="topBar" style="display:flex; align-items:center;">
-        <div id="scores">
-          <div class="scoreBox" style="background:linear-gradient(90deg,#ffefd5,#fff1cc); color:#1a1200;">
-            <div style="font-weight:700;">👹 鬼: <span id="topOni">0</span></div>
-          </div>
-          <div class="scoreBox" style="background:linear-gradient(90deg,#dff4ff,#d6f0ff); color:#022033;">
-            <div style="font-weight:700;">🏃 逃げ: <span id="topRunner">0</span></div>
-          </div>
+    <div id="screen-game" class="panel hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;gap:12px">
+          <div style="background:linear-gradient(90deg,#ffefd5,#fff1cc);padding:8px 12px;border-radius:8px;color:#1a1200;font-weight:700">👹 鬼: <span id="topOni">0</span></div>
+          <div style="background:linear-gradient(90deg,#dff4ff,#d6f0ff);padding:8px 12px;border-radius:8px;color:#022033;font-weight:700">🏃 逃げ: <span id="topRunner">0</span></div>
         </div>
-
-        <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px">
           <div id="dashStatus">ダッシュ: -</div>
           <button id="leaveBtn">離脱</button>
         </div>
       </div>
 
-      <div style="margin-top:12px; width:100%;">
+      <div style="margin-top:12px">
         <canvas id="gameCanvas" width="1200" height="640"></canvas>
-        <div id="boostStatus" class="panel" style="margin-top:8px; background:linear-gradient(180deg,#06281f,#0b3940);"></div>
+        <div id="boostStatus" class="panel" style="margin-top:8px;background:linear-gradient(90deg,#06281f,#0b3940)"></div>
       </div>
     </div>
   </div>
 
   <div id="right">
     <div class="panel">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <div id="playerInfoName" style="font-weight:700;">未参加</div>
-          <div class="small" id="playerInfoTeam">チーム: -</div>
-        </div>
-        <div>
-          <div class="small">放置: <span id="idleCount">0</span>s</div>
-        </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><div id="playerInfoName" style="font-weight:700">未参加</div><div class="small" id="playerInfoTeam">チーム: -</div></div>
+        <div class="small">放置: <span id="idleCount">0</span>s</div>
       </div>
     </div>
 
-    <div class="panel" style="display:flex; flex-direction:column; gap:8px; height:40vh;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div style="font-weight:700;">現在のプレイヤー</div>
-        <div class="small">リアルタイム</div>
-      </div>
-      <div id="playerList"></div>
-      <div style="margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
-        <div class="small">（管理者は座標・退出ボタンを操作可）</div>
-      </div>
+    <div class="panel" style="height:40vh;overflow:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:700">現在のプレイヤー</div><div class="small">リアルタイム</div></div>
+      <div id="playerList" style="margin-top:8px"></div>
     </div>
 
-    <div class="panel" style="display:flex; flex-direction:column; gap:8px;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div style="font-weight:700;">イベントログ</div>
-        <div class="small">重要な出来事を表示</div>
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:700">イベントログ</div><div class="small">10秒で消去</div>
       </div>
-      <div id="log" class="muted"></div>
-      <div style="display:flex; gap:8px; align-items:center;">
-        <button id="adminReset" class="hidden">強制リセット</button>
-        <div class="small" id="statusSmall">状態: 初期</div>
-      </div>
-      <div style="margin-top:8px;">
-        <canvas id="miniMap" class="minimap"></canvas>
-        <div class="mapImageNote small">map.png を置くとマップ背景に反映されます。</div>
-      </div>
+      <div id="log" style="margin-top:8px"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px"><button id="adminReset" class="hidden">強制リセット</button><div class="small" id="statusSmall">状態: 初期</div></div>
+      <div style="margin-top:12px"><canvas id="miniMap" class="minimap" width="340" height="140"></canvas><div class="small">map.png を配置すると背景反映</div></div>
     </div>
-
   </div>
 </div>
 
-<div id="loadingOverlay">処理中... 少しお待ちください</div>
-
-<!-- audio -->
+<!-- audio files -->
 <audio id="asioto" src="asioto.mp3" preload="auto"></audio>
 <audio id="explosion" src="explosion.mp3" preload="auto"></audio>
 
 <script type="module">
-/*
-  完全版 single-file
-  - Firebase Web SDK v12.7.0 (Firestore)
-  - 主要改善・バグ修正:
-    * 鬼捕獲で +5 点（即加算）
-    * 鬼ダッシュ倍率 3x、持続 3s、CT 10s、UI 表示
-    * 足音は逃げ側にのみ聞こえ、範囲を小さく（VISIBILITY_RADIUS * FOOTSTEP_RANGE_MULT）
-    * WASD長押しでの固まり不具合を解消（キーイベント管理を堅牢化）
-    * 参加処理はロードオーバーレイを表示し完了後にゲーム画面へ遷移（選択バグ解消）
-    * イチゴ：2人揃うと各人 +1、イチゴは即ランダムテレポート再配置
-    * 納品所（角のみ）、納品時にそのプレイヤーの所持がチームスコアに加算
-    * どちらかが 50 点で勝利 → 即 finalize（全データ削除・待機に戻る）
-    * UI 改善：ログ色分け、ブースト表示を画面下に
-    * ミニマップとメインマップ同期、イチゴ表示
-    * 管理者に退出（キック）ボタンと座標表示
-    * 共有ケーキ廃止
-  注意：Firestore のセキュリティルールを運用環境で必ず設定してください
-*/
-
-/* Firebase imports */
+/* Firebase SDKs */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-analytics.js";
 import {
@@ -228,7 +135,7 @@ import {
   onSnapshot, getDocs, runTransaction, writeBatch, serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
-/* ====== Firebase config - provided by user ====== */
+/* ========== Firebase config ========== */
 const firebaseConfig = {
   apiKey: "AIzaSyBmgtx4FW_3_0zy1MvAvZLPHmE_CE1txuE",
   authDomain: "zzke-ki1.firebaseapp.com",
@@ -241,10 +148,10 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-try { getAnalytics(app); } catch(e){ /* ignore if blocked */ }
+try{ getAnalytics(app); } catch(e){ /* ignore */ }
 const db = getFirestore(app);
 
-/* ====== constants / tunables ====== */
+/* ========== Constants ========== */
 const GAME_COLLECTION = "games";
 const GAME_DOC_ID = "current_round";
 const PLAYERS_COL = "players";
@@ -255,37 +162,25 @@ const MAP_SIZE = 2000;
 const VISIBILITY_RADIUS = 200;
 const PICKUP_RADIUS = 80;
 const CAPTURE_RADIUS = 36;
-const IDLE_TIMEOUT_SEC = 30; // display only, deletion disabled
-
 const POSITION_THROTTLE_MS = 200;
 const WIN_SCORE = 50;
 
-/* speeds: final request was to multiply all speeds by 1.5 earlier; keep those applied */
-let RUNNER_SPEED = 2.6 * 1.5;
-let ONI_SPEED = 2.4 * 1.5;
+/* Base speeds multiplied by prior requests then final 1.8x */
+let RUNNER_SPEED = 2.6 * 1.5 * 1.8; // base 2.6 * prev1.5 * now1.8
+let ONI_SPEED = 2.4 * 1.5 * 1.8;
 
-/* dash: user requested ~3x movement speed during dash */
-const DASH_MULT = 3.0;
+let DASH_MULT = 6.0; // previous 3 -> doubled by request -> 6
 const DASH_DUR_MS = 3000;
 const DASH_CT_MS = 10000;
 
-/* coop boost: when nearby >=1, speed multiplier 1.3 (user asked) */
 const COOP_BOOST_DIST = 120;
 const COOP_SPEED_MULT = 1.3;
 
-/* footstep: range multiplier relative to VISIBILITY_RADIUS.
-   User requested shrink to 1/3 of prior; set to 1/3 so smaller audible radius.
-   Footstep is heard by runners who are within this range of any oni.
-*/
-const FOOTSTEP_RANGE_MULT = 1/3;
+let FOOTSTEP_RANGE_MULT = 1.8; // expanded (not too huge)
 
-/* admin password */
 const ADMIN_PASS = "1122";
 
-/* strawberry respawn behavior */
-const STRAW_RESPAWN_IMMEDIATE = true; // teleport immediately after collection
-
-/* ====== client state ====== */
+/* ========== State ========== */
 let sessionId = null;
 let localPlayer = null;
 let allPlayers = [];
@@ -297,18 +192,19 @@ let joinedTeamChoice = null;
 let adminMode = false;
 
 /* UI refs */
+const loadingOverlay = document.getElementById("loadingOverlay");
 const screens = {
   waiting: document.getElementById("screen-waiting"),
   team: document.getElementById("screen-team"),
   join: document.getElementById("screen-join"),
   game: document.getElementById("screen-game")
 };
-const loadingOverlay = document.getElementById("loadingOverlay");
 const gameCanvas = document.getElementById("gameCanvas");
 const gctx = gameCanvas.getContext("2d");
 const miniMap = document.getElementById("miniMap");
 const miniCtx = miniMap.getContext("2d");
 const boostStatusEl = document.getElementById("boostStatus");
+const dashStatusEl = document.getElementById("dashStatus");
 
 const toTeamBtn = document.getElementById("toTeamBtn");
 const chooseOni = document.getElementById("chooseOni");
@@ -332,11 +228,9 @@ const adminResetBtn = document.getElementById("adminReset");
 const statusSmall = document.getElementById("statusSmall");
 const playerListEl = document.getElementById("playerList");
 const homeResetBtn = document.getElementById("homeResetBtn");
-const dashStatusEl = document.getElementById("dashStatus");
 const waitOniCount = document.getElementById("waitOniCount");
 const waitRunnerCount = document.getElementById("waitRunnerCount");
 
-/* audio */
 const asiotoAudio = document.getElementById("asioto");
 const explosionAudio = document.getElementById("explosion");
 
@@ -349,74 +243,74 @@ let mapImageLoaded = false;
 mapImage.src = "map.png";
 mapImage.onload = () => { mapImageLoaded = true; };
 
-/* ===== helpers ===== */
+/* ===== Helpers ===== */
 function showScreen(name){ for(const k in screens) screens[k].classList.add("hidden"); screens[name].classList.remove("hidden"); }
-function randPos(){ return { x: Math.floor(Math.random()*MAP_SIZE), y: Math.floor(Math.random()*MAP_SIZE) }; }
-function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-function nowMillis(){ return Date.now(); }
-function updateStatus(s){ statusSmall.textContent = "状態: " + s; }
 function showLoading(on){ loadingOverlay.style.display = on ? "flex" : "none"; }
+function randPos(){ return { x: Math.floor(Math.random()*MAP_SIZE), y: Math.floor(Math.random()*MAP_SIZE)}; }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function updateStatus(s){ statusSmall.textContent = "状態: " + s; }
 
-/* improved log: type = "info" | "event" | "error" */
+/* log with auto-remove after 10s */
 function pushLog(text, type="info"){
   const el = document.createElement("div");
-  el.className = "logItem " + (type === "event" ? "log-event" : (type === "error" ? "log-error" : "log-info"));
+  el.className = "logItem " + (type==="event" ? "log-event" : (type==="error" ? "log-error" : "log-info"));
   el.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
   logEl.prepend(el);
-  while(logEl.children.length > 200) logEl.removeChild(logEl.lastChild);
+  // auto remove after 10s
+  setTimeout(()=>{ try{ el.remove(); }catch(e){} }, 10000);
+  while(logEl.children.length > 300) logEl.removeChild(logEl.lastChild);
 }
 
-/* ===== Firestore: ensure game doc exists ===== */
+/* ========== Firestore ensure game doc ========== */
 async function ensureGame(){
-  const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
-  const snap = await getDoc(gRef);
+  const gameRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
+  const snap = await getDoc(gameRef);
   if (!snap.exists()){
-    await setDoc(gRef, { state:"waiting", scores:{ oni:0, runner:0 }, mapSize:MAP_SIZE, createdAt: serverTimestamp() });
+    await setDoc(gameRef, { state:"waiting", scores:{ oni:0, runner:0 }, mapSize:MAP_SIZE, createdAt: serverTimestamp() });
   }
 }
 
-/* ===== Join flow with loading/polling to avoid race bug ===== */
+/* ========== Robust join flow (fixes first-join bug) ========== */
 async function joinAs(name, team){
   showLoading(true);
   await ensureGame();
-  // delete same-name old sessions per policy
+
+  // remove previous same-name sessions
   try {
     const snaps = await getDocs(collection(db, PLAYERS_COL));
     for (const d of snaps.docs){
       const data = d.data();
       if (data && data.name === name){
-        try { await deleteDoc(d.ref); pushLog(`古いセッション（${name}）を削除しました`, "info"); } catch(e){}
+        try { await deleteDoc(d.ref); pushLog(`古いセッション (${name}) を削除しました`, "info"); } catch(e){}
       }
     }
   } catch(e){ /* ignore */ }
 
+  // create player doc
   try {
     const pRef = await addDoc(collection(db, PLAYERS_COL), {
-      name: name || "Player",
-      team,
-      x: randPos().x, y: randPos().y,
-      possession: 0,
-      lastAction: serverTimestamp(),
-      dashReadyAt: 0
+      name, team, x: randPos().x, y: randPos().y, possession: 0, lastAction: serverTimestamp(), dashReadyAt: 0
     });
     sessionId = pRef.id;
-    // wait until the doc is visible via getDoc (short polling)
+
+    // set up listeners immediately so snapshot updates arrive
+    setupListeners();
+
+    // WAIT for player's doc to be visible via getDoc (max wait 5s)
     const start = Date.now();
     let ok = false;
-    for (let i=0;i<30;i++){
+    while (Date.now() - start < 5000){
       try {
         const snap = await getDoc(doc(db, PLAYERS_COL, sessionId));
         if (snap.exists()){ ok = true; break; }
       } catch(e){}
-      await new Promise(r => setTimeout(r, 150));
-      if (Date.now() - start > 5000) break;
+      await new Promise(r=>setTimeout(r, 150));
     }
     if (!ok){
-      // fallback: still proceed but inform user
-      pushLog("参加処理が遅延しました。接続を確認してください。", "error");
+      pushLog("参加処理が遅延しています。接続状況を確認してください。", "error");
     }
-    setupListeners(); // start realtime listeners
-    // ensure game doc set to playing if currently waiting
+
+    // ensure game state set to playing if it was waiting (transactional)
     try {
       await runTransaction(db, async (t) => {
         const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
@@ -425,19 +319,27 @@ async function joinAs(name, team){
         const g = s.data();
         if (g.state === "waiting") t.update(gRef, { state: "playing" });
       });
-    } catch(e){}
+    } catch(e){ /* ignore */ }
+
+    // WAIT until localPlayer (from onSnapshot) is set to avoid camera freeze
+    const start2 = Date.now();
+    let ready=false;
+    while (Date.now() - start2 < 5000){
+      if (allPlayers.find(p => p._id === sessionId)){ ready=true; break; }
+      await new Promise(r=>setTimeout(r,100));
+    }
+    // if still not ready, proceed but inform
+    if (!ready) pushLog("参加は成功しましたが、同期が遅れています。数秒お待ちください。", "info");
     showLoading(false);
     showScreen("game");
-    updateStatus("参加中: " + name + " (" + team + ")");
+    updateStatus(`参加中: ${name} (${team})`);
     pushLog(`${name} が参加しました (チーム: ${team})`, "event");
   } catch(e){
-    showLoading(false);
-    pushLog("参加に失敗しました: " + (e.message||e), "error");
-    alert("参加に失敗しました。コンソールを確認してください。");
+    showLoading(false); pushLog("参加失敗: " + (e.message||e), "error"); alert("参加に失敗しました");
   }
 }
 
-/* ===== leave ===== */
+/* ========== leave ========== */
 async function leave(){
   if (!sessionId) return;
   try { await deleteDoc(doc(db, PLAYERS_COL, sessionId)); } catch(e){}
@@ -447,7 +349,7 @@ async function leave(){
   updateStatus("離脱しました");
 }
 
-/* ===== listeners ===== */
+/* ========== Listeners ========== */
 function setupListeners(){
   // game doc
   if (unsubGame) unsubGame();
@@ -458,9 +360,8 @@ function setupListeners(){
     topRunner.textContent = gameDoc.scores?.runner || 0;
     oniScoreEl.textContent = gameDoc.scores?.oni || 0;
     runnerScoreEl.textContent = gameDoc.scores?.runner || 0;
-    // if someone reset or win caused state to waiting -> go to team selection
     if (gameDoc.state === "waiting"){
-      pushLog("ラウンドは待機状態になりました。チーム選択へ戻ります。", "info");
+      pushLog("サーバ: 待機状態に戻りました。", "info");
       showScreen("team");
     }
   });
@@ -468,53 +369,48 @@ function setupListeners(){
   // players
   if (unsubPlayers) unsubPlayers();
   unsubPlayers = onSnapshot(collection(db, PLAYERS_COL), (snap) => {
-    const arr = [];
-    snap.forEach(d => { const data = d.data(); data._id = d.id; arr.push(data); });
+    const arr=[]; snap.forEach(d => { const data=d.data(); data._id=d.id; arr.push(data); });
     allPlayers = arr;
-    localPlayer = allPlayers.find(p => p._id === sessionId) || localPlayer;
+    localPlayer = allPlayers.find(p=>p._id===sessionId) || localPlayer;
     // counts
-    const oniCount = allPlayers.filter(p => p.team === "oni").length;
-    const runnerCount = allPlayers.filter(p => p.team === "runner").length;
+    const oniCount = allPlayers.filter(p=>p.team==="oni").length;
+    const runnerCount = allPlayers.filter(p=>p.team==="runner").length;
     oniCountEl.textContent = "人数: " + oniCount;
     runnerCountEl.textContent = "人数: " + runnerCount;
     waitOniCount.textContent = oniCount;
     waitRunnerCount.textContent = runnerCount;
-    // update player info
-    if (localPlayer){ playerInfoName.textContent = localPlayer.name; playerInfoTeam.textContent = "チーム: " + localPlayer.team; } else { playerInfoName.textContent = "未参加"; playerInfoTeam.textContent = "チーム: -"; }
+    if (localPlayer){ playerInfoName.textContent = localPlayer.name; playerInfoTeam.textContent = "チーム: " + localPlayer.team; } else { playerInfoName.textContent="未参加"; playerInfoTeam.textContent="チーム: -"; }
     renderPlayerList();
-    // if any strawberry snapshot changed, attempt collection to improve reliability
-    for (const s of strawberries) attemptCollectStraw(s);
   });
 
   // strawberries
   if (unsubStraw) unsubStraw();
   unsubStraw = onSnapshot(collection(db, STRAWBERRIES_COL), (snap) => {
-    const arr = []; snap.forEach(d => { const data = d.data(); data._id = d.id; arr.push(data); });
+    const arr=[]; snap.forEach(d=>{ const data=d.data(); data._id=d.id; arr.push(data); });
     strawberries = arr;
-    // run collection attempt to ensure pickup is not missed
-    for (const s of strawberries) attemptCollectStraw(s);
+    for (const s of strawberries) attemptCollectStraw(s); // safety call
   });
 
   // deliveries
   if (unsubDeliveries) unsubDeliveries();
   unsubDeliveries = onSnapshot(collection(db, DELIVERIES_COL), (snap) => {
-    const arr = []; snap.forEach(d => { const data = d.data(); data._id = d.id; arr.push(data); });
+    const arr=[]; snap.forEach(d=>{ const data=d.data(); data._id=d.id; arr.push(data); });
     deliveries = arr;
   });
 }
 
 function tearDownListeners(){
-  if (unsubGame) unsubGame(); unsubGame = null;
-  if (unsubPlayers) unsubPlayers(); unsubPlayers = null;
-  if (unsubStraw) unsubStraw(); unsubStraw = null;
-  if (unsubDeliveries) unsubDeliveries(); unsubDeliveries = null;
-  allPlayers = []; strawberries = []; deliveries = []; gameDoc = null;
+  if (unsubGame) unsubGame(); unsubGame=null;
+  if (unsubPlayers) unsubPlayers(); unsubPlayers=null;
+  if (unsubStraw) unsubStraw(); unsubStraw=null;
+  if (unsubDeliveries) unsubDeliveries(); unsubDeliveries=null;
+  allPlayers=[]; strawberries=[]; deliveries=[]; gameDoc=null;
   renderPlayerList();
 }
 
-/* ===== finalize/reset: delete data and set waiting ===== */
+/* ========== finalize/reset ========== */
 async function finalizeAndResetRound(){
-  try {
+  try{
     async function delAll(col){
       const snaps = await getDocs(collection(db, col));
       const batch = writeBatch(db);
@@ -526,20 +422,37 @@ async function finalizeAndResetRound(){
     await delAll(STRAWBERRIES_COL);
     await delAll(DELIVERIES_COL);
     await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { state:"waiting", scores:{oni:0, runner:0}, mapSize:MAP_SIZE, createdAt: serverTimestamp() });
-    pushLog("サーバ: ラウンドを完全リセットしました（全データ削除）", "event");
-  } catch(e){
-    console.error("finalize error", e);
-  }
+    pushLog("管理者: 全データ削除・ラウンドリセット", "event");
+  } catch(e){ console.error(e); }
 }
 
-/* ===== strawberry collection: robust version
-   - If >=2 runners within PICKUP_RADIUS -> increment each nearby player's possession (+1)
-   - Immediately teleport strawberry to random location (available:true)
+/* ========== Strawberry: advanced collection logic ==========
+   - If >=2 runners within PICKUP_RADIUS:
+       * If they are in speed-boost (i.e., have nearby teammate) AND/OR general rule, each nearby runner gets +1
+   - Immediately teleport strawberry to a random position (available: true)
 */
 async function attemptCollectStraw(straw){
   if (!straw || !straw.available) return;
-  const nearby = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - straw.x, p.y - straw.y) <= PICKUP_RADIUS);
-  if (nearby.length < 2) return;
+  const runnersNearby = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - straw.x, p.y - straw.y) <= PICKUP_RADIUS);
+  if (runnersNearby.length < 2) return;
+
+  // Determine which runners to award:
+  // Preference: if two or more runnersNearby and at least two of them are in boost (near another runner), award those boosted players.
+  // Otherwise award the nearest two.
+  const boosted = runnersNearby.filter(p => {
+    const nearCount = allPlayers.filter(o => o.team==="runner" && o._id !== p._id && Math.hypot(o.x - p.x, o.y - p.y) <= COOP_BOOST_DIST).length;
+    return nearCount >= 1;
+  });
+
+  let targets = [];
+  if (boosted.length >= 2){
+    targets = boosted.slice(0,2);
+  } else {
+    runnersNearby.sort((a,b)=> Math.hypot(a.x-straw.x,a.y-straw.y) - Math.hypot(b.x-straw.x,b.y-straw.y));
+    targets = runnersNearby.slice(0,2);
+  }
+
+  // Perform transactional updates: mark strawberry unavailable, increment targets' possession
   try {
     await runTransaction(db, async (t) => {
       const sRef = doc(db, STRAWBERRIES_COL, straw._id);
@@ -547,10 +460,8 @@ async function attemptCollectStraw(straw){
       if (!sSnap.exists()) throw new Error("straw missing");
       const sData = sSnap.data();
       if (!sData.available) throw new Error("already collected");
-      // mark unavailable immediately
-      t.update(sRef, { available: false });
-      // increment each nearby player's possession
-      for (const p of nearby){
+      t.update(sRef, { available:false });
+      for (const p of targets){
         const pRef = doc(db, PLAYERS_COL, p._id);
         const pSnap = await t.get(pRef);
         if (!pSnap.exists()) continue;
@@ -558,8 +469,8 @@ async function attemptCollectStraw(straw){
         t.update(pRef, { possession: cur + 1, lastAction: serverTimestamp() });
       }
     });
-    pushLog(`イチゴ回収: ${nearby.map(n=>n.name).join(", ")}`, "event");
-    // teleport strawberry immediately to random pos and set available true
+    pushLog(`イチゴ回収: ${targets.map(t=>t.name).join(", ")}`, "event");
+    // teleport strawberry immediately
     try {
       const newPos = randPos();
       await updateDoc(doc(db, STRAWBERRIES_COL, straw._id), { x: newPos.x, y: newPos.y, available: true });
@@ -567,9 +478,7 @@ async function attemptCollectStraw(straw){
   } catch(e){}
 }
 
-/* ===== delivery: when player near any delivery point, transfer possession to team score
-   - after transaction, check for win condition and call finalize if reached
-*/
+/* ========== Delivery: transfer possession to team score and check win ========== */
 async function tryDeliver(player){
   if (!player || player.team !== "runner") return;
   for (const d of deliveries){
@@ -589,15 +498,13 @@ async function tryDeliver(player){
           t.update(doc(db, PLAYERS_COL, player._id), { possession: 0, lastAction: serverTimestamp() });
         });
         pushLog(`${player.name} が納品！ +${amount}`, "event");
-        // Check win condition
+        // check win
         const gSnap2 = await getDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID));
         if (gSnap2.exists()){
           const g2 = gSnap2.data();
-          if ((g2.scores?.runner || 0) >= WIN_SCORE){
-            // declare winner and finalize
+          if ((g2.scores?.runner||0) >= WIN_SCORE){
             pushLog("逃げチームが勝利！ラウンドを終了します。", "event");
-            await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { ...g2, state: "ended" });
-            // finalize will be handled by periodic check or client - call finalize directly
+            await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { ...g2, state:"ended" });
             await finalizeAndResetRound();
           }
         }
@@ -607,11 +514,7 @@ async function tryDeliver(player){
   }
 }
 
-/* ===== capture handling: when oni catches runner:
-   - runner possession -> 0, respawn random
-   - add +5 to oni team score
-   - check for win condition and finalize
-*/
+/* ========== Capture handling: +5 to oni on capture ========== */
 async function checkCapturesAndHandle(){
   const onis = allPlayers.filter(p => p.team === "oni");
   const runners = allPlayers.filter(p => p.team === "runner");
@@ -621,9 +524,7 @@ async function checkCapturesAndHandle(){
       const d = Math.hypot(r.x - o.x, r.y - o.y);
       if (d <= CAPTURE_RADIUS){
         try {
-          // reset runner
           await updateDoc(doc(db, PLAYERS_COL, r._id), { possession:0, x: randPos().x, y: randPos().y, lastAction: serverTimestamp() });
-          // add +5 to oni score
           await runTransaction(db, async (t) => {
             const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
             const s = await t.get(gRef);
@@ -639,32 +540,30 @@ async function checkCapturesAndHandle(){
           const gSnap2 = await getDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID));
           if (gSnap2.exists()){
             const g2 = gSnap2.data();
-            if ((g2.scores?.oni || 0) >= WIN_SCORE){
+            if ((g2.scores?.oni||0) >= WIN_SCORE){
               pushLog("鬼チームが勝利！ラウンドを終了します。", "event");
-              await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { ...g2, state: "ended" });
+              await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { ...g2, state:"ended" });
               await finalizeAndResetRound();
             }
           }
-        } catch(e){ console.error(e); }
+        } catch(e){}
         break;
       }
     }
   }
 }
 
-/* ===== position update throttled ===== */
+/* ========== Position send (throttled) ========== */
 async function sendPositionIfNeeded(x,y){
   if (!sessionId) return;
-  const now = nowMillis();
+  const now = Date.now();
   if (now - lastPosSend < POSITION_THROTTLE_MS) return;
   lastPosSend = now;
-  try {
-    await updateDoc(doc(db, PLAYERS_COL, sessionId), { x, y, lastAction: serverTimestamp() });
-  } catch(e){}
+  try { await updateDoc(doc(db, PLAYERS_COL, sessionId), { x, y, lastAction: serverTimestamp() }); } catch(e){}
 }
 
-/* ===== Dash handling (oni) ====== */
-function canDash(p){ if (!p || p.team !== "oni") return false; const readyAt = p.dashReadyAt || 0; return Date.now() >= readyAt; }
+/* ========== Dash ========== */
+function canDash(p){ if (!p || p.team !== "oni") return false; return Date.now() >= (p.dashReadyAt || 0); }
 async function startDash(){
   if (!localPlayer || localPlayer.team !== "oni") return;
   const now = Date.now();
@@ -675,268 +574,111 @@ async function startDash(){
   } catch(e){}
 }
 
-/* ===== seed map (deliveries corners only) ===== */
+/* ========== seed map (corner deliveries only) ========== */
 async function seedMapOnce(){
   const dSnap = await getDocs(collection(db, DELIVERIES_COL));
   if (dSnap.size === 0){
-    const pts = [
-      { x: 80, y: 80 },
-      { x: MAP_SIZE-80, y: 80 },
-      { x: 80, y: MAP_SIZE-80 },
-      { x: MAP_SIZE-80, y: MAP_SIZE-80 }
-    ];
+    const pts = [{ x:80,y:80 },{ x:MAP_SIZE-80,y:80 },{ x:80,y:MAP_SIZE-80 },{ x:MAP_SIZE-80,y:MAP_SIZE-80 }];
     for (const p of pts) await addDoc(collection(db, DELIVERIES_COL), p);
   }
   const sSnap = await getDocs(collection(db, STRAWBERRIES_COL));
   if (sSnap.size === 0){
-    const spts = [
-      { x: 400, y: 400, available:true },
-      { x: 800, y: 700, available:true },
-      { x: 1300, y: 1100, available:true },
-      { x: 1600, y: 500, available:true },
-    ];
+    const spts = [{ x:400,y:400,available:true },{ x:800,y:700,available:true },{ x:1300,y:1100,available:true },{ x:1600,y:500,available:true }];
     for (const s of spts) await addDoc(collection(db, STRAWBERRIES_COL), s);
   }
 }
 
-/* ===== drawing helpers ===== */
+/* ========== Drawing helpers & render loop ========== */
 function drawTextBubble(ctx, text, x, y, bg="#000", small=false){
-  ctx.save();
-  ctx.font = (small ? "12px sans-serif" : "13px sans-serif");
-  const metrics = ctx.measureText(text);
-  const padX = 8, padY = 6;
-  const w = metrics.width + padX*2;
-  const h = 18;
-  const bx = x - w/2, by = y - h/2;
-  ctx.fillStyle = bg || "rgba(0,0,0,0.6)";
-  const r = 8;
-  ctx.beginPath();
-  ctx.moveTo(bx+r, by);
-  ctx.arcTo(bx+w, by, bx+w, by+h, r);
-  ctx.arcTo(bx+w, by+h, bx, by+h, r);
-  ctx.arcTo(bx, by+h, bx, by, r);
-  ctx.arcTo(bx, by, bx+w, by, r);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, x, y);
-  ctx.restore();
+  ctx.save(); ctx.font = small ? "12px sans-serif":"13px sans-serif";
+  const metrics = ctx.measureText(text); const pad=8; const w=metrics.width+pad*2; const h=18; const bx=x-w/2; const by=y-h/2;
+  ctx.fillStyle = bg; const r=8;
+  ctx.beginPath(); ctx.moveTo(bx+r,by); ctx.arcTo(bx+w,by,bx+w,by+h,r); ctx.arcTo(bx+w,by+h,bx,by+h,r); ctx.arcTo(bx,by+h,bx,by,r); ctx.arcTo(bx,by,bx+w,by,r); ctx.closePath(); ctx.fill();
+  ctx.fillStyle="#fff"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(text,x,y); ctx.restore();
 }
-
-function drawDirectionHint(ctx, target, self, width, height){
-  const dx = target.x - self.x, dy = target.y - self.y;
-  const angle = Math.atan2(dy, dx);
-  const cx = width/2, cy = height/2;
-  const edgeX = cx + Math.cos(angle) * (Math.min(width,height)/2 - 30);
-  const edgeY = cy + Math.sin(angle) * (Math.min(width,height)/2 - 30);
-  ctx.save();
-  ctx.translate(edgeX, edgeY);
-  ctx.rotate(angle);
-  ctx.fillStyle = "#ff8";
-  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-10,-6); ctx.lineTo(-10,6); ctx.closePath(); ctx.fill();
-  const dist = Math.round(Math.hypot(dx,dy));
-  drawTextBubble(ctx, `${target.name} (${dist}m)`, edgeX + 18, edgeY, "#222", true);
-  ctx.restore();
+function drawDirectionHint(ctx,target,self,width,height){
+  const dx=target.x-self.x, dy=target.y-self.y; const angle=Math.atan2(dy,dx); const cx=width/2, cy=height/2;
+  const edgeX = cx + Math.cos(angle)*(Math.min(width,height)/2-30); const edgeY = cy + Math.sin(angle)*(Math.min(width,height)/2-30);
+  ctx.save(); ctx.translate(edgeX,edgeY); ctx.rotate(angle); ctx.fillStyle="#ff8"; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-10,-6); ctx.lineTo(-10,6); ctx.closePath(); ctx.fill();
+  drawTextBubble(ctx,`${target.name} (${Math.round(Math.hypot(dx,dy))}m)`, edgeX+18, edgeY, "#222", true); ctx.restore();
 }
-
-/* draw main world (synchronized with minimap) */
-function drawWorld(ctx, width, height, centerPlayer, applyVisibility){
+function drawWorld(ctx,width,height,centerPlayer,applyVisibility){
   ctx.clearRect(0,0,width,height);
-  // camera center clamp
-  let camX = centerPlayer ? centerPlayer.x : MAP_SIZE/2;
-  let camY = centerPlayer ? centerPlayer.y : MAP_SIZE/2;
-  const halfW = width/2, halfH = height/2;
-  camX = clamp(camX, halfW, MAP_SIZE - halfW);
-  camY = clamp(camY, halfH, MAP_SIZE - halfH);
-  const toScreenX = (mx) => (mx - (camX - halfW));
-  const toScreenY = (my) => (my - (camY - halfH));
+  let camX=centerPlayer?centerPlayer.x:MAP_SIZE/2, camY=centerPlayer?centerPlayer.y:MAP_SIZE/2;
+  const halfW=width/2, halfH=height/2; camX=clamp(camX,halfW,MAP_SIZE-halfW); camY=clamp(camY,halfH,MAP_SIZE-halfH);
+  const toScreenX = mx => mx - (camX-halfW), toScreenY = my => my - (camY-halfH);
 
-  // draw map image (fill entire canvas)
-  if (mapImageLoaded){
-    const scaleX = width / MAP_SIZE;
-    const scaleY = height / MAP_SIZE;
-    ctx.drawImage(mapImage, (-(camX - halfW))*scaleX, (-(camY - halfH))*scaleY, MAP_SIZE*scaleX, MAP_SIZE*scaleY);
-  } else {
-    ctx.fillStyle = "#081018"; ctx.fillRect(0,0,width,height);
-  }
+  if (mapImageLoaded){ const sx=(-(camX-halfW))*(width/MAP_SIZE), sy=(-(camY-halfH))*(height/MAP_SIZE); ctx.drawImage(mapImage, sx, sy, width, height); } else { ctx.fillStyle="#081018"; ctx.fillRect(0,0,width,height); }
 
-  // deliveries
-  for (const d of deliveries){
-    const sx = toScreenX(d.x), sy = toScreenY(d.y);
-    drawTextBubble(ctx, "△ 納品所", sx, sy - 26, "#ffd39a");
-    ctx.fillStyle = "#ffd39a";
-    ctx.beginPath(); ctx.moveTo(sx, sy-10); ctx.lineTo(sx-10, sy+10); ctx.lineTo(sx+10, sy+10); ctx.closePath(); ctx.fill();
-  }
+  for (const d of deliveries){ const sx=toScreenX(d.x), sy=toScreenY(d.y); drawTextBubble(ctx,"△ 納品所",sx,sy-26,"#ffd39a"); ctx.fillStyle="#ffd39a"; ctx.beginPath(); ctx.moveTo(sx,sy-10); ctx.lineTo(sx-10,sy+10); ctx.lineTo(sx+10,sy+10); ctx.closePath(); ctx.fill(); }
 
-  // strawberries (visible to runners within visibility)
   for (const s of strawberries){
-    const sx = toScreenX(s.x), sy = toScreenY(s.y);
-    let visible = true;
-    if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
-      visible = Math.hypot(centerPlayer.x - s.x, centerPlayer.y - s.y) <= VISIBILITY_RADIUS;
-    }
+    const sx=toScreenX(s.x), sy=toScreenY(s.y);
+    let visible=true;
+    if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ visible = Math.hypot(centerPlayer.x-s.x,centerPlayer.y-s.y)<=VISIBILITY_RADIUS; }
     if (!visible) continue;
-    drawTextBubble(ctx, "・ イチゴ", sx, sy - 26, "#ff6b8a");
-    ctx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f";
-    ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI*2); ctx.fill();
-    // glow single-player if only one runner nearby
-    const runnersNear = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - s.x, p.y - s.y) <= PICKUP_RADIUS);
-    if (runnersNear.length === 1){
-      ctx.strokeStyle = "rgba(255,255,128,0.9)"; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI*2); ctx.stroke(); ctx.lineWidth = 1;
-    }
+    drawTextBubble(ctx,"・ イチゴ",sx,sy-26,"#ff6b8a"); ctx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f"; ctx.beginPath(); ctx.arc(sx,sy,8,0,Math.PI*2); ctx.fill();
+    const runnersNear = allPlayers.filter(p=>p.team==="runner" && Math.hypot(p.x-s.x,p.y-s.y)<=PICKUP_RADIUS);
+    if (runnersNear.length===1){ ctx.strokeStyle="rgba(255,255,128,0.9)"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sx,sy,12,0,Math.PI*2); ctx.stroke(); ctx.lineWidth=1; }
   }
 
-  // players
   for (const p of allPlayers){
-    let visible = true;
-    if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
-      if (p._id === centerPlayer._id) visible = true;
-      else visible = (Math.hypot(centerPlayer.x - p.x, centerPlayer.y - p.y) <= VISIBILITY_RADIUS);
-    }
+    let visible=true;
+    if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ if (p._id===centerPlayer._id) visible=true; else visible = Math.hypot(centerPlayer.x-p.x,centerPlayer.y-p.y) <= VISIBILITY_RADIUS; }
     if (!visible) continue;
-    const sx = toScreenX(p.x), sy = toScreenY(p.y);
-    if (p.team === "runner"){
-      ctx.fillStyle = "#4db8ff";
-      ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI*2); ctx.fill();
-    } else {
-      ctx.fillStyle = "#ffcf4d";
-      ctx.fillRect(sx-12, sy-12, 24, 24);
-    }
-    // outline for self
-    if (localPlayer && p._id === localPlayer._id){
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
-      if (p.team === "runner"){ ctx.beginPath(); ctx.arc(sx, sy, 14, 0, Math.PI*2); ctx.stroke(); }
-      else { ctx.strokeRect(sx-14, sy-14, 28, 28); }
-      ctx.lineWidth = 1;
-    }
-    // runner possession and crowd label moved to top-of-screen (now show possession bubble)
-    if (p.team === "runner"){
-      const posText = (p.possession ? `🍓${p.possession}` : "🍓0");
-      drawTextBubble(ctx, posText, sx, sy - 34, "#083047");
-    }
-    // name bubble below
-    drawTextBubble(ctx, p.name, sx, sy + 20, "#000", true);
+    const sx=toScreenX(p.x), sy=toScreenY(p.y);
+    if (p.team==="runner"){ ctx.fillStyle="#4db8ff"; ctx.beginPath(); ctx.arc(sx,sy,12,0,Math.PI*2); ctx.fill(); }
+    else { ctx.fillStyle="#ffcf4d"; ctx.fillRect(sx-12,sy-12,24,24); }
+    if (localPlayer && p._id===localPlayer._id){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; if (p.team==="runner"){ ctx.beginPath(); ctx.arc(sx,sy,14,0,Math.PI*2); ctx.stroke(); } else ctx.strokeRect(sx-14,sy-14,28,28); ctx.lineWidth=1; }
+    if (p.team==="runner"){ const posText = (p.possession?`🍓${p.possession}`:"🍓0"); drawTextBubble(ctx,posText,sx,sy-34,"#083047"); }
+    drawTextBubble(ctx,p.name,sx,sy+20,"#000",true);
   }
 
-  // runner sight darkness
-  if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
-    ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.beginPath();
-    ctx.rect(0,0,width,height);
-    ctx.arc(width/2, height/2, VISIBILITY_RADIUS, 0, Math.PI*2, true);
-    try{ ctx.fill('evenodd'); }catch(e){ ctx.globalCompositeOperation='destination-out'; ctx.fill(); ctx.globalCompositeOperation='source-over'; }
-    ctx.restore();
-  }
-
-  // nearest teammate hint for runner
-  if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
-    const others = allPlayers.filter(p => p.team === "runner" && p._id !== centerPlayer._id);
-    if (others.length > 0){
-      others.sort((a,b)=> Math.hypot(a.x-centerPlayer.x,a.y-centerPlayer.y) - Math.hypot(b.x-centerPlayer.x,b.y-centerPlayer.y));
-      const near = others[0]; drawDirectionHint(ctx, near, centerPlayer, width, height);
-    }
-  }
+  if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ ctx.save(); ctx.fillStyle="rgba(0,0,0,0.6)"; ctx.beginPath(); ctx.rect(0,0,width,height); ctx.arc(width/2,height/2,VISIBILITY_RADIUS,0,Math.PI*2,true); try{ ctx.fill('evenodd'); }catch(e){ ctx.globalCompositeOperation='destination-out'; ctx.fill(); ctx.globalCompositeOperation='source-over'; } ctx.restore(); }
+  if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ const others = allPlayers.filter(p=>p.team==="runner" && p._id!==centerPlayer._id); if (others.length>0){ others.sort((a,b)=>Math.hypot(a.x-centerPlayer.x,a.y-centerPlayer.y)-Math.hypot(b.x-centerPlayer.x,b.y-centerPlayer.y)); drawDirectionHint(gctx, others[0], centerPlayer, width, height); } }
 }
 
-/* draw minimap (synchronized) */
 function drawMiniMap(){
   miniCtx.clearRect(0,0,miniMap.width,miniMap.height);
   const w = miniMap.width, h = miniMap.height;
-  miniCtx.fillStyle = "#041218"; miniCtx.fillRect(0,0,w,h);
+  miniCtx.fillStyle="#041218"; miniCtx.fillRect(0,0,w,h);
   if (mapImageLoaded) miniCtx.drawImage(mapImage,0,0,w,h);
-  // deliveries
-  for (const d of deliveries){
-    const sx = d.x / MAP_SIZE * w, sy = d.y / MAP_SIZE * h;
-    miniCtx.fillStyle = "#ffd39a"; miniCtx.beginPath(); miniCtx.moveTo(sx, sy-6); miniCtx.lineTo(sx-6, sy+6); miniCtx.lineTo(sx+6, sy+6); miniCtx.closePath(); miniCtx.fill();
-  }
-  // strawberries
-  for (const s of strawberries){
-    const sx = s.x / MAP_SIZE * w, sy = s.y / MAP_SIZE * h;
-    miniCtx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f"; miniCtx.beginPath(); miniCtx.arc(sx, sy, 3,0,Math.PI*2); miniCtx.fill();
-  }
-  // players
-  for (const p of allPlayers){
-    const sx = p.x / MAP_SIZE * w, sy = p.y / MAP_SIZE * h;
-    if (localPlayer && localPlayer.team === "runner"){
-      if (p._id === localPlayer._id){
-        miniCtx.fillStyle = "#00ff80"; miniCtx.beginPath(); miniCtx.arc(sx, sy, 5,0,Math.PI*2); miniCtx.fill();
-      } else if (p.team === "runner"){
-        miniCtx.fillStyle = "#4db8ff"; miniCtx.beginPath(); miniCtx.arc(sx, sy, 4,0,Math.PI*2); miniCtx.fill();
-      }
-    } else {
-      miniCtx.fillStyle = p.team === "oni" ? "#ffcf4d" : "#4db8ff";
-      miniCtx.beginPath(); miniCtx.arc(sx, sy, 3,0,Math.PI*2); miniCtx.fill();
-    }
-  }
-  miniCtx.strokeStyle = "rgba(255,255,255,0.06)"; miniCtx.strokeRect(0,0,w,h);
+  for (const d of deliveries){ const sx=d.x/MAP_SIZE*w, sy=d.y/MAP_SIZE*h; miniCtx.fillStyle="#ffd39a"; miniCtx.beginPath(); miniCtx.moveTo(sx,sy-6); miniCtx.lineTo(sx-6,sy+6); miniCtx.lineTo(sx+6,sy+6); miniCtx.closePath(); miniCtx.fill(); }
+  for (const s of strawberries){ const sx=s.x/MAP_SIZE*w, sy=s.y/MAP_SIZE*h; miniCtx.fillStyle=s.available?"#ff6b8a":"#5a2a2f"; miniCtx.beginPath(); miniCtx.arc(sx,sy,3,0,Math.PI*2); miniCtx.fill(); }
+  for (const p of allPlayers){ const sx=p.x/MAP_SIZE*w, sy=p.y/MAP_SIZE*h; if (localPlayer && localPlayer.team==="runner"){ if (p._id===localPlayer._id){ miniCtx.fillStyle="#00ff80"; miniCtx.beginPath(); miniCtx.arc(sx,sy,5,0,Math.PI*2); miniCtx.fill(); } else if (p.team==="runner"){ miniCtx.fillStyle="#4db8ff"; miniCtx.beginPath(); miniCtx.arc(sx,sy,4,0,Math.PI*2); miniCtx.fill(); } } else { miniCtx.fillStyle=p.team==="oni"?"#ffcf4d":"#4db8ff"; miniCtx.beginPath(); miniCtx.arc(sx,sy,3,0,Math.PI*2); miniCtx.fill(); } }
+  miniCtx.strokeStyle="rgba(255,255,255,0.06)"; miniCtx.strokeRect(0,0,w,h);
 }
 
-/* ===== render loop ===== */
-function renderLoop(){
-  requestAnimationFrame(renderLoop);
-  drawWorld(gctx, gameCanvas.width, gameCanvas.height, localPlayer, true);
-  drawMiniMap();
-  updateDashStatusUI();
-  updateBoostUI();
-}
-renderLoop();
+/* render loop */
+(function renderLoop(){ requestAnimationFrame(renderLoop); drawWorld(gctx,gameCanvas.width,gameCanvas.height,localPlayer,true); drawMiniMap(); updateDashStatusUI(); updateBoostUI(); })();
 
-/* ===== input handling (robust) ===== */
+/* ========== Input handling robustly (fix stuck long-press bug) ========== */
 const pressed = new Set();
 let lastKeyEventTime = Date.now();
-
-window.addEventListener('keydown', (e)=>{
-  const k = e.key.toLowerCase();
-  // capture WASD and arrows and shift only
-  if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){
-    e.preventDefault();
-    lastKeyEventTime = Date.now();
-    pressed.add(k);
-  }
-});
-window.addEventListener('keyup', (e)=>{
-  const k = e.key.toLowerCase();
-  if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){
-    e.preventDefault();
-    lastKeyEventTime = Date.now();
-    pressed.delete(k);
-  }
-});
-window.addEventListener('blur', ()=>{ pressed.clear(); });
-
-/* periodic guard: if key set stuck, clear after 1s without events */
-setInterval(()=>{ if (Date.now() - lastKeyEventTime > 1000) pressed.clear(); }, 1200);
+window.addEventListener('keydown',(e)=>{ const k=e.key.toLowerCase(); if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){ e.preventDefault(); pressed.add(k); lastKeyEventTime=Date.now(); }});
+window.addEventListener('keyup',(e)=>{ const k=e.key.toLowerCase(); if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){ e.preventDefault(); pressed.delete(k); lastKeyEventTime=Date.now(); }});
+window.addEventListener('blur', ()=> pressed.clear());
+setInterval(()=>{ if (Date.now()-lastKeyEventTime>1000) pressed.clear(); },1200);
 
 /* movement tick */
 setInterval(async ()=>{
   if (!localPlayer || !sessionId) return;
-  let sp = localPlayer.team === "oni" ? ONI_SPEED : RUNNER_SPEED;
-  // dash trigger
-  if (localPlayer.team === "oni" && (pressed.has("shift")) && canDash(localPlayer)){
-    await startDash();
-  }
+  let sp = localPlayer.team==="oni" ? ONI_SPEED : RUNNER_SPEED;
+  if (localPlayer.team==="oni" && (pressed.has("shift")) && canDash(localPlayer)) await startDash();
   if (localPlayer._isDashingUntil && Date.now() < localPlayer._isDashingUntil) sp *= DASH_MULT;
-  // coop boost (1.3x)
-  if (localPlayer.team === "runner"){
-    const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team === "runner" && Math.hypot(p.x - localPlayer.x, p.y - localPlayer.y) <= COOP_BOOST_DIST);
-    if (nearby.length >= 1) sp *= COOP_SPEED_MULT;
+  if (localPlayer.team==="runner"){
+    const nearby = allPlayers.filter(p=> p._id!==localPlayer._id && p.team==="runner" && Math.hypot(p.x-localPlayer.x,p.y-localPlayer.y) <= COOP_BOOST_DIST);
+    if (nearby.length>=1) sp *= COOP_SPEED_MULT;
   }
-
-  // determine movement from pressed set (WASD or arrows)
-  let dx = 0, dy = 0;
-  if (pressed.has("a") || pressed.has("arrowleft")) dx -= 1;
-  if (pressed.has("d") || pressed.has("arrowright")) dx += 1;
-  if (pressed.has("w") || pressed.has("arrowup")) dy -= 1;
-  if (pressed.has("s") || pressed.has("arrowdown")) dy += 1;
-  if (dx === 0 && dy === 0) return;
-  const mag = Math.hypot(dx,dy) || 1;
-  dx = dx/mag * sp; dy = dy/mag * sp;
-  const nx = clamp(localPlayer.x + dx, 0, MAP_SIZE);
-  const ny = clamp(localPlayer.y + dy, 0, MAP_SIZE);
+  let dx=0,dy=0;
+  if (pressed.has("a")||pressed.has("arrowleft")) dx-=1;
+  if (pressed.has("d")||pressed.has("arrowright")) dx+=1;
+  if (pressed.has("w")||pressed.has("arrowup")) dy-=1;
+  if (pressed.has("s")||pressed.has("arrowdown")) dy+=1;
+  if (dx===0 && dy===0) return;
+  const mag = Math.hypot(dx,dy)||1; dx = dx/mag * sp; dy = dy/mag * sp;
+  const nx = clamp(localPlayer.x + dx, 0, MAP_SIZE); const ny = clamp(localPlayer.y + dy, 0, MAP_SIZE);
+  // optimistic update
   localPlayer.x = nx; localPlayer.y = ny;
   await sendPositionIfNeeded(nx, ny);
   await tryDeliver(localPlayer);
@@ -944,13 +686,13 @@ setInterval(async ()=>{
   await checkCapturesAndHandle();
 }, 100);
 
-/* ===== footstep: runners hear if oni within reduced range ===== */
+/* footstep: runners hear if any oni within reduced-but-wider range */
 setInterval(()=>{
   if (!localPlayer) return;
-  if (localPlayer.team === "runner"){
-    const onis = allPlayers.filter(p => p.team === "oni");
+  if (localPlayer.team==="runner"){
+    const onis = allPlayers.filter(p=>p.team==="oni");
     for (const o of onis){
-      const d = Math.hypot(o.x - localPlayer.x, o.y - localPlayer.y);
+      const d = Math.hypot(o.x-localPlayer.x, o.y-localPlayer.y);
       if (d <= VISIBILITY_RADIUS * FOOTSTEP_RANGE_MULT){
         asiotoAudio.currentTime = 0; asiotoAudio.play().catch(()=>{});
         break;
@@ -959,30 +701,25 @@ setInterval(()=>{
   }
 }, 900);
 
-/* ===== player list (with admin kick and coords) ===== */
+/* player list rendering (admin kick & coords) */
 function renderPlayerList(){
   playerListEl.innerHTML = "";
   const sorted = allPlayers.slice().sort((a,b)=> a.team.localeCompare(b.team) || (a.name||"").localeCompare(b.name));
   for (const p of sorted){
     const row = document.createElement("div"); row.className="playerRow";
     const left = document.createElement("div"); left.style.display="flex"; left.style.gap="8px"; left.style.alignItems="center";
-    const shape = document.createElement("div");
-    shape.style.width = "14px"; shape.style.height = "14px"; shape.style.borderRadius = p.team === "runner" ? "50%" : "3px";
-    shape.style.background = p.team === "runner" ? "#4db8ff" : "#ffd54d";
+    const shape = document.createElement("div"); shape.style.width="14px"; shape.style.height="14px"; shape.style.borderRadius = p.team==="runner"?"50%":"3px";
+    shape.style.background = p.team==="runner" ? "#4db8ff" : "#ffd54d";
     left.appendChild(shape);
     const info = document.createElement("div"); info.innerHTML = `<div style="font-weight:700">${p.name}</div><div class="small">${p.team}</div>`;
     left.appendChild(info);
     row.appendChild(left);
-
-    const right = document.createElement("div"); right.style.textAlign = "right";
-    const coords = adminMode ? `<div class="coord">${Math.round(p.x)},${Math.round(p.y)}</div>` : "";
-    right.innerHTML = `<div style="font-weight:700">${p.possession || 0}🍓</div>${coords}`;
+    const right = document.createElement("div"); right.style.textAlign="right";
+    const coords = adminMode ? `<div class="small" style="color:#9fb8c8">${Math.round(p.x)},${Math.round(p.y)}</div>` : "";
+    right.innerHTML = `<div style="font-weight:700">${p.possession||0}🍓</div>${coords}`;
     if (adminMode){
-      const kick = document.createElement("button"); kick.className="kickBtn"; kick.textContent = "退出";
-      kick.onclick = async () => {
-        if (!confirm(`${p.name} を強制退出させますか？`)) return;
-        try { await deleteDoc(doc(db, PLAYERS_COL, p._id)); pushLog(`${p.name} を管理者が退出させました`, "event"); } catch(e){ alert("退出に失敗しました"); }
-      };
+      const kick = document.createElement("button"); kick.className="kickBtn"; kick.textContent="退出";
+      kick.onclick = async ()=>{ if (!confirm(`${p.name} を強制退出しますか？`)) return; try{ await deleteDoc(doc(db, PLAYERS_COL, p._id)); pushLog(`${p.name} を管理者が退出させました`, "event"); }catch(e){ alert("退出に失敗しました"); } };
       right.appendChild(kick);
     }
     row.appendChild(right);
@@ -990,69 +727,38 @@ function renderPlayerList(){
   }
 }
 
-/* ===== dash UI update ===== */
+/* dash UI & boost UI */
 function updateDashStatusUI(){
   if (!localPlayer){ dashStatusEl.textContent = "ダッシュ: -"; return; }
   if (localPlayer.team !== "oni"){ dashStatusEl.textContent = "ダッシュ: (鬼のみ)"; return; }
   const readyAt = localPlayer.dashReadyAt || 0;
   const now = Date.now();
   if (now >= readyAt) dashStatusEl.textContent = "ダッシュ: 使用可能";
-  else {
-    const sec = Math.ceil((readyAt - now)/1000);
-    dashStatusEl.textContent = `ダッシュ: 使用不可 残り ${sec}s`;
-  }
+  else dashStatusEl.textContent = `ダッシュ: 使用不可 残り ${Math.ceil((readyAt-now)/1000)}s`;
 }
-
-/* ===== boost UI at bottom (shows if you have boost) ===== */
 function updateBoostUI(){
-  if (!localPlayer) { boostStatusEl.textContent = ""; return; }
-  if (localPlayer.team === "runner"){
-    const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team === "runner" && Math.hypot(p.x - localPlayer.x, p.y - localPlayer.y) <= COOP_BOOST_DIST);
-    if (nearby.length >= 1){
-      boostStatusEl.textContent = "スピードブースト中（近くに仲間）";
-      boostStatusEl.style.background = "linear-gradient(90deg,#7fffd4,#2ee6b6)";
-    } else {
-      boostStatusEl.textContent = "";
-      boostStatusEl.style.background = "linear-gradient(180deg,#06281f,#0b3940)";
-    }
-  } else {
-    boostStatusEl.textContent = "";
-  }
+  if (!localPlayer){ boostStatusEl.textContent = ""; return; }
+  if (localPlayer.team==="runner"){
+    const nearby = allPlayers.filter(p=>p._id!==localPlayer._id && p.team==="runner" && Math.hypot(p.x-localPlayer.x,p.y-localPlayer.y)<=COOP_BOOST_DIST);
+    if (nearby.length>=1){ boostStatusEl.textContent="スピードブースト中（近くに仲間）"; boostStatusEl.style.background="linear-gradient(90deg,#7fffd4,#2ee6b6)"; }
+    else { boostStatusEl.textContent=""; boostStatusEl.style.background="linear-gradient(90deg,#06281f,#0b3940)"; }
+  } else boostStatusEl.textContent="";
 }
 
-/* ===== UI hooks ===== */
+/* ========== UI hooks ========== */
 toTeamBtn.addEventListener('click', ()=> showScreen("team"));
-chooseOni.addEventListener('click', ()=>{ joinedTeamChoice = "oni"; showScreen("join"); });
-chooseRunner.addEventListener('click', ()=>{ joinedTeamChoice = "runner"; showScreen("join"); });
+chooseOni.addEventListener('click', ()=>{ joinedTeamChoice="oni"; showScreen("join"); });
+chooseRunner.addEventListener('click', ()=>{ joinedTeamChoice="runner"; showScreen("join"); });
 backFromTeam.addEventListener('click', ()=> showScreen("waiting"));
 backFromJoin.addEventListener('click', ()=> showScreen("team"));
-joinNow.addEventListener('click', async ()=>{
-  const name = (inputName.value || "").trim();
-  if (!name){ alert("名前を入力してください"); return; }
-  if (!joinedTeamChoice){ alert("チームを選んでください"); return; }
-  await joinAs(name, joinedTeamChoice);
-  joinedTeamChoice = null; inputName.value = "";
-});
+joinNow.addEventListener('click', async ()=>{ const name=(inputName.value||"").trim(); if (!name){ alert("名前を入力してください"); return; } if (!joinedTeamChoice){ alert("チームを選んでください"); return; } await joinAs(name, joinedTeamChoice); joinedTeamChoice=null; inputName.value=""; });
 leaveBtn.addEventListener('click', ()=> leave());
 
-adminSmall.addEventListener('click', async ()=>{
-  const pass = prompt("管理パスワードを入力してください:");
-  if (pass === ADMIN_PASS){
-    adminMode = true; adminResetBtn.classList.remove("hidden"); alert("管理モード有効");
-    renderPlayerList();
-  } else alert("パスワード不正");
-});
-adminResetBtn.addEventListener('click', async ()=>{
-  if (!adminMode) return alert("管理モードが必要です");
-  if (!confirm("全データを削除してリセットしますか？")) return;
-  await finalizeAndResetRound();
-});
-homeResetBtn.addEventListener('click', async ()=>{
-  const pass = prompt("管理パスワードを入力して強制リセットしますか？");
-  if (pass === ADMIN_PASS){ await finalizeAndResetRound(); } else alert("管理パスワードが違います");
-});
+adminSmall.addEventListener('click', async ()=>{ const pass=prompt("管理パスワードを入力してください:"); if (pass===ADMIN_PASS){ adminMode=true; adminResetBtn.classList.remove("hidden"); alert("管理モード有効"); renderPlayerList(); } else alert("パスワード不正"); });
+adminResetBtn.addEventListener('click', async ()=>{ if (!adminMode) return alert("管理モードが必要です"); if (!confirm("全データを削除してリセットしますか？")) return; await finalizeAndResetRound(); });
+homeResetBtn.addEventListener('click', async ()=>{ const pass=prompt("管理パスワードを入力:"); if (pass===ADMIN_PASS){ await finalizeAndResetRound(); } else alert("パスワード違います"); });
 
-/* ===== boot ===== */
+/* ========== Boot ========== */
 (async function boot(){
   await ensureGame();
   await seedMapOnce();
@@ -1060,37 +766,25 @@ homeResetBtn.addEventListener('click', async ()=>{
   updateStatus("待機中");
 })();
 
-/* ===== periodic tasks: win check and housekeeping ===== */
-setInterval(async () => {
-  // win check by game doc state / scores
-  try {
+/* ========== Periodic tasks: win-check, strawberry/capture checks ====== */
+setInterval(async ()=>{
+  try{
     const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
     const gSnap = await getDoc(gRef);
     if (!gSnap.exists()) return;
     const g = gSnap.data();
-    const scores = g.scores || { oni:0, runner:0 };
+    const scores = g.scores || {oni:0, runner:0};
     if (g.state === "playing" && (scores.oni >= WIN_SCORE || scores.runner >= WIN_SCORE)){
-      // set ended and finalize
-      pushLog("スコア到達によりラウンドを終了します。", "event");
-      await setDoc(gRef, { ...g, state: "ended" });
+      pushLog("スコア到達でラウンドを終了します。", "event");
+      await setDoc(gRef, { ...g, state:"ended" });
       await finalizeAndResetRound();
     }
-  } catch(e){}
+  }catch(e){}
 }, 3000);
 
-/* ensure strawberry collection & capture checks often for responsiveness */
-setInterval(async ()=>{
-  for (const s of strawberries) attemptCollectStraw(s);
-  await checkCapturesAndHandle();
-}, 1200);
+setInterval(async ()=>{ for (const s of strawberries) attemptCollectStraw(s); await checkCapturesAndHandle(); }, 1200);
 
-/* ===== Notes & next steps =====
- - セキュリティルール（firebase.rules）を必ず用意してください。
- - map.png, asioto.mp3, explosion.mp3 を配置してください。
- - さらにUIの色/フォント/サイズを可愛くする調整、モバイル向けの操作（仮想スティック）などは別PRで行えます。
- - もし動作確認後に「イチゴの再出現を遅らせたい」「キック時のログ保存」「管理者の詳しい権限」等の要望があれば教えてください。
-======================= */
-
+/* ========== End of script ========== */
 </script>
 </body>
 </html>
