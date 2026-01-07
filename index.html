@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>マルチプレイ基盤 - 完全版（迷路＋安定Carry＋BGM）</title>
+<title>マルチプレイ基盤 - 完全版（迷路・安定化・Carry改善・BGM）</title>
 <style>
   :root{ --bg:#0d0f12; --panel:#111317; --muted:#9aa3ad; }
   *{box-sizing:border-box}
@@ -42,15 +42,13 @@
     <div id="screen-waiting" class="panel">
       <div class="center">
         <h2>待機 / ルール</h2>
-        <p class="small">参加するを押すとチーム選択へ。BGMは参加操作で再生されます。</p>
+        <p class="small">参加するを押すとチーム選択へ。BGMは参加操作後に再生。</p>
         <div style="margin-top:12px;display:flex;gap:8px;justify-content:center">
           <button id="toTeamBtn" class="big">参加する</button>
           <button id="homeResetBtn" class="big">強制リセット</button>
         </div>
       </div>
-      <div style="margin-top:12px">
-        <div class="small">イチゴ×4（中央寄り）／Shiftで掴んで運搬、離すで設置。4箇所すべての納品所にイチゴが置かれると逃げ勝利。鬼は捕獲で+5。</div>
-      </div>
+      <div style="margin-top:12px"><div class="small">ゲーム開始時にランダム迷路（通路幅は十分）を生成します。リスポーンやオブジェクトは壁と重ならないよう配置します。</div></div>
       <div style="margin-top:8px" class="small center">チーム人数 — 鬼: <span id="waitOniCount">0</span> / 逃げ: <span id="waitRunnerCount">0</span></div>
     </div>
 
@@ -131,19 +129,15 @@
 <audio id="explosion" src="explosion.mp3" preload="auto"></audio>
 
 <script type="module">
-/* ===========================
-  完全版ゲーム基盤
-  - Firestore v12.x
-  - 迷路（walls）生成、通路幅確保
-  - 壁と重ならない生成（プレイヤー/イチゴ/納品）
-  - Carry（Shift）安定化：掴む／運ぶ／置くの反応強化
-  - 自動ドロップ：鬼が近づいたら設置
-  - FOOTSTEP_RANGE_MULT で足音範囲を調整可能
-  - BGM（bgm.mp3）を参加時に再生
-  - ログ自動削除10秒、カメラ lerp、衝突回避
-  =========================== */
+/*
+  完全版 single-file
+  - 目的: 安定性最優先。迷路（ランダム）を生成し、壁と重ならないように配置。
+  - SHIFTで確実に拾えるようにトランザクション＋フォールバック位置修正を導入。
+  - プレイヤー移動は壁セル判定で衝突回避（スライド/縮小試行）して詰まらないように。
+  - Firestore v12.7.0 を利用。firebaseConfig は埋め込まれています（provided earlier）。
+  - 重要: このファイルをそのまま保存してブラウザで開いてください。map.png 等アセットを同フォルダに配置し��ください。
+*/
 
-/* Firebase imports */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-analytics.js";
 import {
@@ -151,7 +145,7 @@ import {
   onSnapshot, getDocs, runTransaction, writeBatch, serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
-/* Firebase config (provided) */
+/* ========== Firebase config (user) ========== */
 const firebaseConfig = {
   apiKey: "AIzaSyBmgtx4FW_3_0zy1MvAvZLPHmE_CE1txuE",
   authDomain: "zzke-ki1.firebaseapp.com",
@@ -162,12 +156,12 @@ const firebaseConfig = {
   appId: "1:260981230516:web:146a29f15b2716a9af80e1",
   measurementId: "G-GF5G1D4E10"
 };
+
 const app = initializeApp(firebaseConfig);
-try { getAnalytics(app); } catch(e){}
+try { getAnalytics(app); } catch(e){ /* ignore */ }
 const db = getFirestore(app);
 
-/* ====== Configurable constants ====== */
-/* Collections */
+/* ========== Constants & Tunables ========== */
 const GAME_COLLECTION = "games";
 const GAME_DOC_ID = "current_round";
 const PLAYERS_COL = "players";
@@ -175,306 +169,431 @@ const STRAWBERRIES_COL = "strawberries";
 const DELIVERIES_COL = "deliveries";
 const WALLS_COL = "walls";
 
-/* Map */
 const MAP_SIZE = 2000;
-
-/* Maze generation params (tune corridor width via CELL_SIZE and WALL_MARGIN):
-   - CELL_SIZE is the grid cell size; corridors correspond to cell centers.
-   - Corridor width effectively ~ CELL_PASSAGE_WIDTH; must be >= player diameter and strawberry diameter.
-*/
-const CELL_SIZE = 160;             // size of grid cell
-const CELL_PASSAGE_WIDTH = 100;    // width of passage inside a cell (must be < CELL_SIZE)
-const WALL_GENERATION_SEED = null; // optional seed (not used here)
-
-/* Gameplay distances & radii */
-let VISIBILITY_RADIUS = 200;
+const PLAYER_RADIUS = 14; // used for collision checks
 const PICKUP_RADIUS = 80;
 const CAPTURE_RADIUS = 36;
+const POSITION_THROTTLE_MS = 180;
+const WIN_SCORE = 50;
 
-/* Speeds & multipliers */
-const GLOBAL_SPEED_MULT = 1.5; // apply 1.5x to all base speeds
+/* Speed multipliers (user requested all speeds *1.5 earlier; apply now via base speeds) */
+const GLOBAL_SPEED_MULT = 1.5;
 const BASE_RUNNER_SPEED = 2.6;
 const BASE_ONI_SPEED = 2.4;
 let RUNNER_SPEED = BASE_RUNNER_SPEED * GLOBAL_SPEED_MULT;
 let ONI_SPEED = BASE_ONI_SPEED * GLOBAL_SPEED_MULT;
 
-/* Dash: per request, further multiply; adjust DASH_MULT as needed */
-let DASH_MULT = 9.0; // tuned high per requests; reduce if too fast
+/* Dash: requested to be further multiplied by 3 -> set DASH_MULT accordingly (tuneable) */
+let DASH_MULT = 9.0; // tune if too big
 const DASH_DUR_MS = 3000;
 const DASH_CT_MS = 10000;
 
-const CARRY_SPEED_MULT = 0.4; // when carrying
+/* Carry */
+const CARRY_SPEED_MULT = 0.4;
+
+/* Coop boost */
 const COOP_BOOST_DIST = 120;
 const COOP_SPEED_MULT = 1.3;
 
-/* Footstep audible range multiplier (configurable) */
-let FOOTSTEP_RANGE_MULT = 5; // change in code to widen/narrow
+/* Footstep audible range multiplier (make configurable as user requested) */
+let FOOTSTEP_RANGE_MULT = 5;
 
-/* Other */
-const POSITION_THROTTLE_MS = 180;
-const WIN_SCORE = 50;
-const STRAW_RESPAWN_IMMEDIATE = true;
+/* Maze generation parameters */
+const MAZE_COLS = 25; // grid for maze carving
+const MAZE_ROWS = 25;
+const CELL_SIZE = Math.floor(MAP_SIZE / MAZE_COLS); // passage width roughly CELL_SIZE
+// Ensure CELL_SIZE >= player size; with 25 cols on 2000 map: ~80, OK
+
+/* Asset filenames (place in same folder) */
+const ASSETS = {
+  map: "map.png",
+  runner: "runner.png",
+  oni: "oni.png",
+  delivery: "delivery.png",
+  strawberry: "strawberry.png"
+};
+
+/* Admin password */
 const ADMIN_PASS = "1122";
 
-/* assets (place files in same dir) */
-const ASSETS = { map: "map.png", runner: "runner.png", oni: "oni.png", delivery: "delivery.png", strawberry: "strawberry.png" };
-
-/* ====== Runtime state ====== */
+/* ========== State ========== */
 let sessionId = null;
 let localPlayer = null;
 let allPlayers = [];
 let strawberries = [];
 let deliveries = [];
-let walls = [];
+let walls = []; // local cache of wall cells (objects with col,row)
+let wallsRectangles = []; // precomputed rectangles for collision/visuals
 let gameDoc = null;
 let lastPosSend = 0;
 let joinedTeamChoice = null;
 let adminMode = false;
+let isBgmPlaying = false;
 
 /* UI refs */
-const screens = { waiting: document.getElementById("screen-waiting"), team: document.getElementById("screen-team"), join: document.getElementById("screen-join"), game: document.getElementById("screen-game") };
+const screens = {
+  waiting: document.getElementById("screen-waiting"),
+  team: document.getElementById("screen-team"),
+  join: document.getElementById("screen-join"),
+  game: document.getElementById("screen-game")
+};
 const loadingOverlay = document.getElementById("loadingOverlay");
-const gameCanvas = document.getElementById("gameCanvas"); const gctx = gameCanvas.getContext("2d");
-const miniMap = document.getElementById("miniMap"); const miniCtx = miniMap.getContext("2d");
-const boostStatusEl = document.getElementById("boostStatus"); const bgmAudio = document.getElementById("bgm");
+const gameCanvas = document.getElementById("gameCanvas");
+const gctx = gameCanvas.getContext("2d");
+const miniMap = document.getElementById("miniMap");
+const miniCtx = miniMap.getContext("2d");
+const boostStatusEl = document.getElementById("boostStatus");
+const bgmAudio = document.getElementById("bgm");
 
-const toTeamBtn = document.getElementById("toTeamBtn"); const chooseOni = document.getElementById("chooseOni"); const chooseRunner = document.getElementById("chooseRunner");
-const backFromTeam = document.getElementById("backFromTeam"); const backFromJoin = document.getElementById("backFromJoin"); const joinNow = document.getElementById("joinNow");
-const inputName = document.getElementById("inputName"); const leaveBtn = document.getElementById("leaveBtn");
-const playerInfoName = document.getElementById("playerInfoName"); const playerInfoTeam = document.getElementById("playerInfoTeam");
-const topOni = document.getElementById("topOni"); const topRunnerRem = document.getElementById("topRunnerRem");
-const oniCountEl = document.getElementById("oniCount"); const runnerCountEl = document.getElementById("runnerCount");
-const logEl = document.getElementById("log"); const adminSmall = document.getElementById("adminSmall");
-const adminResetBtn = document.getElementById("adminReset"); const statusSmall = document.getElementById("statusSmall");
-const playerListEl = document.getElementById("playerList"); const homeResetBtn = document.getElementById("homeResetBtn"); const dashStatusEl = document.getElementById("dashStatus");
-const waitOniCount = document.getElementById("waitOniCount"); const waitRunnerCount = document.getElementById("waitRunnerCount");
-
-/* audio */
-const asiotoAudio = document.getElementById("asioto"); const explosionAudio = document.getElementById("explosion");
+const toTeamBtn = document.getElementById("toTeamBtn");
+const chooseOni = document.getElementById("chooseOni");
+const chooseRunner = document.getElementById("chooseRunner");
+const backFromTeam = document.getElementById("backFromTeam");
+const backFromJoin = document.getElementById("backFromJoin");
+const joinNow = document.getElementById("joinNow");
+const inputName = document.getElementById("inputName");
+const leaveBtn = document.getElementById("leaveBtn");
+const playerInfoName = document.getElementById("playerInfoName");
+const playerInfoTeam = document.getElementById("playerInfoTeam");
+const topOni = document.getElementById("topOni");
+const topRunnerRem = document.getElementById("topRunnerRem");
+const oniCountEl = document.getElementById("oniCount");
+const runnerCountEl = document.getElementById("runnerCount");
+const logEl = document.getElementById("log");
+const adminSmall = document.getElementById("adminSmall");
+const adminResetBtn = document.getElementById("adminReset");
+const statusSmall = document.getElementById("statusSmall");
+const playerListEl = document.getElementById("playerList");
+const homeResetBtn = document.getElementById("homeResetBtn");
+const dashStatusEl = document.getElementById("dashStatus");
+const waitOniCount = document.getElementById("waitOniCount");
+const waitRunnerCount = document.getElementById("waitRunnerCount");
+const asiotoAudio = document.getElementById("asioto");
+const explosionAudio = document.getElementById("explosion");
 
 /* unsub handles */
 let unsubGame = null, unsubPlayers = null, unsubStraw = null, unsubDeliveries = null, unsubWalls = null;
 
-/* load sprite images (optional) */
-const mapImage = new Image(); let mapImageLoaded = false; mapImage.src = ASSETS.map; mapImage.onload = () => mapImageLoaded = true;
-const spriteRunner = new Image(); let spriteRunnerLoaded = false; spriteRunner.src = ASSETS.runner; spriteRunner.onload = () => spriteRunnerLoaded = true;
-const spriteOni = new Image(); let spriteOniLoaded = false; spriteOni.src = ASSETS.oni; spriteOni.onload = () => spriteOniLoaded = true;
-const spriteDelivery = new Image(); let spriteDeliveryLoaded = false; spriteDelivery.src = ASSETS.delivery; spriteDelivery.onload = () => spriteDeliveryLoaded = true;
-const spriteStraw = new Image(); let spriteStrawLoaded = false; spriteStraw.src = ASSETS.strawberry; spriteStraw.onload = () => spriteStrawLoaded = true;
+/* map & sprites */
+const mapImage = new Image(); let mapImageLoaded = false;
+const spriteRunner = new Image(); let spriteRunnerLoaded = false;
+const spriteOni = new Image(); let spriteOniLoaded = false;
+const spriteDelivery = new Image(); let spriteDeliveryLoaded = false;
+const spriteStraw = new Image(); let spriteStrawLoaded = false;
 
-/* camera */
+mapImage.src = ASSETS.map; mapImage.onload = () => mapImageLoaded = true;
+spriteRunner.src = ASSETS.runner; spriteRunner.onload = () => spriteRunnerLoaded = true;
+spriteOni.src = ASSETS.oni; spriteOni.onload = () => spriteOniLoaded = true;
+spriteDelivery.src = ASSETS.delivery; spriteDelivery.onload = () => spriteDeliveryLoaded = true;
+spriteStraw.src = ASSETS.strawberry; spriteStraw.onload = () => spriteStrawLoaded = true;
+
+/* camera smoothing */
 const camera = { x: MAP_SIZE/2, y: MAP_SIZE/2, lerp: 0.18 };
 
-/* helpers */
-function showScreen(name){ for (const k in screens) screens[k].classList.add("hidden"); screens[name].classList.remove("hidden"); }
-function showLoading(on){ loadingOverlay.style.display = on ? "flex" : "none"; }
-function nowMillis(){ return Date.now(); }
+/* Utilities --------------------------------------------------------------- */
+function showScreen(name){ for(const k in screens) screens[k].classList.add("hidden"); screens[name].classList.remove("hidden"); }
 function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-function randNormalCentered(stdFrac=6){ const mean=MAP_SIZE/2; const std=MAP_SIZE/stdFrac; let u=0,v=0; while(u===0) u=Math.random(); while(v===0) v=Math.random(); const z = Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); return Math.round(clamp(mean+z*std,0,MAP_SIZE)); }
-function randPosCentral(){ return { x: randNormalCentered(), y: randNormalCentered() }; }
-function randPos(){ return { x: Math.floor(Math.random()*MAP_SIZE), y: Math.floor(Math.random()*MAP_SIZE) }; }
-function pushLog(text, type="info"){ const el = document.createElement("div"); el.className = "logItem " + (type==="event"?"log-event":(type==="error"?"log-error":"log-info")); el.textContent = `[${new Date().toLocaleTimeString()}] ${text}`; logEl.prepend(el); setTimeout(()=>{ try{ el.remove(); }catch(e){} }, 10000); while(logEl.children.length>200) logEl.removeChild(logEl.lastChild); }
+function nowMillis(){ return Date.now(); }
+function showLoading(on){ loadingOverlay.style.display = on ? "flex" : "none"; }
+function updateStatus(s){ statusSmall.textContent = "状態: " + s; }
+function log(text, type="info"){ const el=document.createElement("div"); el.className="logItem "+(type==="event"?"log-event":(type==="error"?"log-error":"log-info")); el.textContent=`[${new Date().toLocaleTimeString()}] ${text}`; logEl.prepend(el); setTimeout(()=>{ try{el.remove()}catch(e){} },10000); while(logEl.children.length>200) logEl.removeChild(logEl.lastChild); }
 
-/* FIRESTORE: ensure game doc exists */
-async function ensureGame(){ const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID); const snap = await getDoc(gRef); if (!snap.exists()){ await setDoc(gRef, { state:"waiting", scores:{ oni:0, runner:0 }, mapSize:MAP_SIZE, runnerRemaining:4, createdAt: serverTimestamp() }); } }
-
-/* Maze generation (grid DFS) and wall rectangles creation.
-   - GRID: rows x cols based on CELL_SIZE
-   - carve passages using recursive backtracker
-   - walls are cells NOT in passage; store rectangles in WALLS_COL with { x,y,w,h } referencing cell area
+/* Maze generation (grid-based recursive backtracker) --------------------------------
+   - carve passages on grid MAZE_COLS x MAZE_ROWS
+   - passableCells[r][c] = true for corridor cells
+   - walls are cells not carved
+   - corridor cell size is CELL_SIZE
+   - We save walls to Firestore once per round in collection WALLS_COL as list of wall cells {r,c}
+   - spawn objects only in passable cells
 */
-async function generateMazeAndSave(){
-  // compute grid
-  const cols = Math.floor(MAP_SIZE / CELL_SIZE);
-  const rows = Math.floor(MAP_SIZE / CELL_SIZE);
-  if (cols < 3 || rows < 3) { pushLog("MAP or CELL_SIZE too small for maze", "error"); return; }
-  // grid of visited and walls between cells: use recursive backtracking on cell centers
-  const visited = Array(rows).fill(0).map(()=>Array(cols).fill(false));
+function generateMazeGrid(){
+  // iterative stack to avoid recursion depth issues
+  const cols = MAZE_COLS, rows = MAZE_ROWS;
+  const visited = Array.from({length:rows},()=>Array(cols).fill(false));
+  const passable = Array.from({length:rows},()=>Array(cols).fill(false));
   const stack = [];
-  const startR = Math.floor(Math.random()*rows), startC = Math.floor(Math.random()*cols);
-  stack.push([startR,startC]); visited[startR][startC]=true;
-  const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
-  const passage = Array(rows).fill(0).map(()=>Array(cols).fill(false));
-  passage[startR][startC]=true;
+  const sx = Math.floor(Math.random()*cols), sy = Math.floor(Math.random()*rows);
+  stack.push({x:sx,y:sy});
+  visited[sy][sx]=true;
+  passable[sy][sx]=true;
+  const dirs = [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}];
   while(stack.length){
-    const [r,c] = stack[stack.length-1];
-    // shuffle dirs
-    const ds = dirs.slice().sort(()=>Math.random()-0.5);
-    let moved=false;
-    for (const [dr,dc] of ds){
-      const nr = r + dr, nc = c + dc;
-      if (nr>=0 && nr<rows && nc>=0 && nc<cols && !visited[nr][nc]){
-        visited[nr][nc]=true;
-        // carve neighbor as passage
-        passage[nr][nc]=true;
-        stack.push([nr,nc]);
-        moved=true;
-        break;
+    const cur = stack[stack.length-1];
+    const neighbors = [];
+    for(const d of dirs){
+      const nx = cur.x + d.dx*2;
+      const ny = cur.y + d.dy*2;
+      if (nx>=0 && nx<cols && ny>=0 && ny<rows && !visited[ny][nx]){
+        neighbors.push(d);
       }
     }
-    if (!moved) stack.pop();
-  }
-  // Now build walls as rectangles covering non-passage cells
-  // We'll clear existing walls and save new ones
-  // For robustness, compute rect for each non-passage cell: rect coords cover the full CELL_SIZE area
-  try {
-    // delete existing walls
-    const existing = await getDocs(collection(db, WALLS_COL));
-    const batch = writeBatch(db);
-    existing.forEach(d => batch.delete(d.ref));
-    await batch.commit();
-  } catch(e){ /* ignore */ }
-
-  // create walls docs
-  const wallDocs = [];
-  for (let r=0;r<rows;r++){
-    for (let c=0;c<cols;c++){
-      if (!passage[r][c]){
-        const x = Math.floor(c * CELL_SIZE);
-        const y = Math.floor(r * CELL_SIZE);
-        const w = CELL_SIZE;
-        const h = CELL_SIZE;
-        wallDocs.push({ x,y,w,h });
-      }
+    if (neighbors.length){
+      const d = neighbors[Math.floor(Math.random()*neighbors.length)];
+      const betweenX = cur.x + d.dx;
+      const betweenY = cur.y + d.dy;
+      const nx = cur.x + d.dx*2;
+      const ny = cur.y + d.dy*2;
+      visited[betweenY][betweenX]=true;
+      visited[ny][nx]=true;
+      passable[betweenY][betweenX]=true;
+      passable[ny][nx]=true;
+      passable[cur.y][cur.x]=true;
+      stack.push({x:nx,y:ny});
+    } else {
+      stack.pop();
     }
   }
-  // write walls in batches
-  try {
-    for (const wd of wallDocs) {
-      await addDoc(collection(db, WALLS_COL), wd);
-    }
-    pushLog("迷路の壁を生成しました", "event");
-  } catch(e){ pushLog("迷路生成エラー: "+e.message, "error"); }
+  return passable;
 }
 
-/* Utility: check if a point (x,y) collides with any wall (with margin) */
-function pointInWalls(x,y, margin=8){
-  for (const w of walls){
-    if (x >= w.x - margin && x <= w.x + w.w + margin && y >= w.y - margin && y <= w.y + w.h + margin) return true;
+/* Convert passable grid to wall rectangles/list for collision checks:
+   - wallsCells = all (r,c) where passable[r][c] === false
+   - wallsRectangles: each rect {x,y,w,h} in world coords (0..MAP_SIZE)
+*/
+function buildWallRectanglesFromGrid(passable){
+  const rows = passable.length, cols = passable[0].length;
+  const rects = [];
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      if (!passable[r][c]){
+        const x = c*CELL_SIZE, y = r*CELL_SIZE;
+        rects.push({x,y,w:CELL_SIZE,h:CELL_SIZE});
+      }
+    }
+  }
+  return rects;
+}
+
+/* Save walls to Firestore (one document storing passable array would be large).
+   Simpler: store a single canvas-like encoding: list of wall cell indices; to keep small, store as array of "r_c" strings.
+*/
+async function writeWallsToFirestore(passable){
+  try {
+    const wallIds = [];
+    for(let r=0;r<MAZE_ROWS;r++){
+      for(let c=0;c<MAZE_COLS;c++){
+        if (!passable[r][c]) wallIds.push(`${r}_${c}`);
+      }
+    }
+    // store as single doc in games/current_round/walls
+    await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID + "_meta"), { walls: wallIds, mazeCols: MAZE_COLS, mazeRows: MAZE_ROWS, cellSize: CELL_SIZE, createdAt: serverTimestamp() });
+  } catch(e){
+    console.error("writeWallsToFirestore err", e);
+  }
+}
+
+/* getWallsFromFirestore fallback */
+async function readWallsFromFirestore(){
+  try {
+    const metaRef = doc(db, GAME_COLLECTION, GAME_DOC_ID + "_meta");
+    const snap = await getDoc(metaRef);
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    const wallIds = data.walls || [];
+    const rects = [];
+    for (const key of wallIds){
+      const [r,c] = key.split("_").map(x=>parseInt(x));
+      if (!Number.isFinite(r) || !Number.isFinite(c)) continue;
+      rects.push({x:c*CELL_SIZE,y:r*CELL_SIZE,w:CELL_SIZE,h:CELL_SIZE});
+    }
+    return rects;
+  } catch(e){ return null; }
+}
+
+/* Collision helpers ----------------------------------------------------- */
+/* Rectangle-circle collision: circle at (cx,cy) radius r vs rect {x,y,w,h} */
+function circleRectOverlap(cx,cy,r,rect){
+  const rx = Math.max(rect.x, Math.min(cx, rect.x+rect.w));
+  const ry = Math.max(rect.y, Math.min(cy, rect.y+rect.h));
+  const dx = cx - rx, dy = cy - ry;
+  return (dx*dx + dy*dy) <= (r*r);
+}
+
+/* Test whether point inside any wall */
+function pointInsideWall(x,y){
+  for (const rect of wallsRectangles){
+    if (x >= rect.x && x <= rect.x+rect.w && y >= rect.y && y <= rect.y+rect.h) return true;
   }
   return false;
 }
 
-/* Choose a random position within a passage cell (not in walls).
-   We'll query walls arranged as grid: pick a random cell that is not a wall (i.e., center not inside any wall)
+/* Find nearest free position (center of a passable cell) to given x,y using spiral search on grid
+   Ensures returned position is not inside a wall and not overlapping other objects.
 */
-function randomPassagePosition(){
-  // attempt up to N tries
+function findNearestFreePos(x,y){
+  // map to cell indices
+  const c0 = clamp(Math.floor(x / CELL_SIZE), 0, MAZE_COLS-1);
+  const r0 = clamp(Math.floor(y / CELL_SIZE), 0, MAZE_ROWS-1);
+  const visited = Array.from({length:MAZE_ROWS},()=>Array(MAZE_COLS).fill(false));
+  const q = [{r:r0,c:c0}];
+  visited[r0][c0]=true;
+  while(q.length){
+    const cur = q.shift();
+    const cx = cur.c*CELL_SIZE + CELL_SIZE/2;
+    const cy = cur.r*CELL_SIZE + CELL_SIZE/2;
+    // check rect at center not overlapping walls
+    const overlapping = wallsRectangles.some(rect => circleRectOverlap(cx,cy, PLAYER_RADIUS+2, rect));
+    if (!overlapping) return {x: cx, y: cy};
+    const neighbors = [{dr:1,dc:0},{dr:-1,dc:0},{dr:0,dc:1},{dr:0,dc:-1}];
+    for (const n of neighbors){
+      const nr = cur.r + n.dr, nc = cur.c + n.dc;
+      if (nr>=0 && nr<MAZE_ROWS && nc>=0 && nc<MAZE_COLS && !visited[nr][nc]){
+        visited[nr][nc]=true; q.push({r:nr,c:nc});
+      }
+    }
+  }
+  // fallback: random safe pos
   for (let i=0;i<200;i++){
-    // pick a random cell by center: choose random center offset inside cell but avoiding edges
-    const c = Math.floor(Math.random() * Math.floor(MAP_SIZE / CELL_SIZE));
-    const r = Math.floor(Math.random() * Math.floor(MAP_SIZE / CELL_SIZE));
-    const px = Math.floor(c * CELL_SIZE + CELL_SIZE/2 + (Math.random()-0.5) * (CELL_PASSAGE_WIDTH/2));
-    const py = Math.floor(r * CELL_SIZE + CELL_SIZE/2 + (Math.random()-0.5) * (CELL_PASSAGE_WIDTH/2));
-    if (!pointInWalls(px,py, 10)) return { x: clamp(px, 0, MAP_SIZE), y: clamp(py, 0, MAP_SIZE) };
+    const px = Math.random()*MAP_SIZE, py = Math.random()*MAP_SIZE;
+    if (!pointInsideWall(px,py)) return {x:px,y:py};
   }
-  // fallback: find any non-wall pixel by random until success
-  for (let i=0;i<2000;i++){
-    const p = randPosCentral();
-    if (!pointInWalls(p.x,p.y,10)) return p;
-  }
-  // absolute fallback
-  return { x: MAP_SIZE/2, y: MAP_SIZE/2 };
+  // ultimate fallback: center
+  return {x:MAP_SIZE/2,y:MAP_SIZE/2};
 }
 
-/* Ensure strawberries spawn not in walls: called at seed and respawn */
-async function seedStrawberries(){
-  const snaps = await getDocs(collection(db, STRAWBERRIES_COL));
-  if (snaps.size === 0){
-    for (let i=0;i<4;i++){
-      const pos = randomPassagePosition();
-      await addDoc(collection(db, STRAWBERRIES_COL), { x: pos.x, y: pos.y, available: true, ownerId: null, placedAtDelivery: null });
+/* Ensure object pos not inside wall; if so move to nearest free pos */
+async function ensureNotInWallAndSave(ref, x, y, extraFields={}){
+  try {
+    if (!pointInsideWall(x,y)) {
+      // save as-is
+      await updateDoc(ref, {...extraFields});
+      return;
     }
-  } else {
-    // if too few, add
-    if (snaps.size < 4){
-      for (let i = snaps.size; i<4; i++){
-        const pos = randomPassagePosition();
-        await addDoc(collection(db, STRAWBERRIES_COL), { x: pos.x, y: pos.y, available: true, ownerId: null, placedAtDelivery: null });
+  } catch(e){}
+  // find nearest free
+  const pos = findNearestFreePos(x,y);
+  try { await updateDoc(ref, {...extraFields, x: pos.x, y: pos.y}); } catch(e){}
+}
+
+/* Spawn helpers that avoid walls and other objects */
+function randomPassablePos(){
+  // choose random passable cell (cells that are not walls)
+  // simple approach: sample random cells until find one not wall
+  for (let i=0;i<200;i++){
+    const c = Math.floor(Math.random()*MAZE_COLS), r = Math.floor(Math.random()*MAZE_ROWS);
+    const rect = {x:c*CELL_SIZE,y:r*CELL_SIZE,w:CELL_SIZE,h:CELL_SIZE};
+    // if rect intersects wallsRectangles? wallsRectangles represent wall cells, so check if this rect itself is a wall cell
+    const isWall = wallsRectangles.some(wr => wr.x === rect.x && wr.y === rect.y);
+    if (!isWall){
+      // return random offset within cell with margin
+      const margin = Math.max(PLAYER_RADIUS+4, 8);
+      const px = clamp(rect.x + margin + Math.random()*(rect.w - margin*2), rect.x+margin, rect.x+rect.w-margin);
+      const py = clamp(rect.y + margin + Math.random()*(rect.h - margin*2), rect.y+margin, rect.y+rect.h-margin);
+      if (!pointInsideWall(px,py)) return {x:px,y:py};
+    }
+  }
+  // fallback spiral search
+  return findNearestFreePos(MAP_SIZE/2, MAP_SIZE/2);
+}
+
+/* Create maze walls and write to Firestore meta doc (ensures all clients have same walls) */
+async function createAndStoreMazeIfNeeded(){
+  try {
+    // check if meta exists
+    const metaRef = doc(db, GAME_COLLECTION, GAME_DOC_ID + "_meta");
+    const metaSnap = await getDoc(metaRef);
+    if (metaSnap.exists()){
+      // read wallsRectangles
+      const data = metaSnap.data();
+      const wallIds = data.walls || [];
+      wallsRectangles = [];
+      for (const key of wallIds){
+        const [r,c] = key.split("_").map(x=>parseInt(x));
+        if (!Number.isFinite(r) || !Number.isFinite(c)) continue;
+        wallsRectangles.push({x:c*CELL_SIZE, y:r*CELL_SIZE, w:CELL_SIZE, h:CELL_SIZE});
       }
+      return;
+    }
+    // generate maze
+    const passable = generateMazeGrid();
+    // build wall ids
+    const wallIds = [];
+    for (let r=0;r<MAZE_ROWS;r++){
+      for (let c=0;c<MAZE_COLS;c++){
+        if (!passable[r][c]) wallIds.push(`${r}_${c}`);
+      }
+    }
+    // store meta
+    await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID + "_meta"), { walls: wallIds, mazeCols: MAZE_COLS, mazeRows: MAZE_ROWS, cellSize: CELL_SIZE, createdAt: serverTimestamp() });
+    // set local wallsRectangles
+    wallsRectangles = buildWallRectanglesFromGrid(passable);
+  } catch(e){
+    console.error("createAndStoreMazeIfNeeded err", e);
+  }
+}
+
+/* Firestore helpers for seed: deliveries & strawberries; ensure they are in passable positions */
+async function seedObjectsSafely(){
+  try {
+    // deliveries corners
+    const dSnap = await getDocs(collection(db, DELIVERIES_COL));
+    if (dSnap.size === 0){
+      const pts = [
+        { x: 80, y: 80, occupied:false, strawberryId:null },
+        { x: MAP_SIZE-80, y: 80, occupied:false, strawberryId:null },
+        { x: 80, y: MAP_SIZE-80, occupied:false, strawberryId:null },
+        { x: MAP_SIZE-80, y: MAP_SIZE-80, occupied:false, strawberryId:null }
+      ];
+      for (const p of pts){
+        const safe = findNearestFreePos(p.x,p.y);
+        await addDoc(collection(db, DELIVERIES_COL), { x:safe.x, y:safe.y, occupied:false, strawberryId:null });
+      }
+    }
+    // strawberries: ensure exactly 4 central-biased
+    const sSnap = await getDocs(collection(db, STRAWBERRIES_COL));
+    if (sSnap.size < 4){
+      const toAdd = 4 - sSnap.size;
+      for (let i=0;i<toAdd;i++){
+        const pos = randomPassablePos();
+        await addDoc(collection(db, STRAWBERRIES_COL), { x: pos.x, y: pos.y, available:true, ownerId:null, placedAtDelivery:null });
+      }
+    } else if (sSnap.size > 4){
+      // optionally trim extras? keep as-is
     } else {
-      // ensure existing strawberries are in passages; if any overlap with walls, move them
-      for (const d of snaps.docs){
-        const s = d.data();
-        if (pointInWalls(s.x, s.y, 6)){
-          const newPos = randomPassagePosition();
-          await updateDoc(doc(db, STRAWBERRIES_COL, d.id), { x: newPos.x, y: newPos.y, available: true, ownerId: null, placedAtDelivery: null });
+      // ensure none overlap walls; reposition if necessary
+      for (const d of sSnap.docs){
+        const data = d.data();
+        if (pointInsideWall(data.x, data.y)){
+          const safe = randomPassablePos();
+          try { await updateDoc(doc(db, STRAWBERRIES_COL, d.id), { x: safe.x, y: safe.y, available:true, ownerId:null, placedAtDelivery:null }); } catch(e){}
         }
       }
     }
+  } catch(e){
+    console.error("seedObjectsSafely err", e);
   }
 }
 
-/* Seed deliveries (corners) */
-async function seedDeliveries(){
-  const dSnap = await getDocs(collection(db, DELIVERIES_COL));
-  if (dSnap.size === 0){
-    const pts = [
-      { x: 80, y: 80, occupied:false, strawberryId:null },
-      { x: MAP_SIZE-80, y: 80, occupied:false, strawberryId:null },
-      { x: 80, y: MAP_SIZE-80, occupied:false, strawberryId:null },
-      { x: MAP_SIZE-80, y: MAP_SIZE-80, occupied:false, strawberryId:null }
-    ];
-    for (const p of pts) await addDoc(collection(db, DELIVERIES_COL), p);
-  } else {
-    // ensure deliveries not inside walls; if so, move slightly inward along map
-    for (const d of dSnap.docs){
-      const data = d.data();
-      if (pointInWalls(data.x, data.y, 6)){
-        const newPos = randomPassagePosition();
-        await updateDoc(doc(db, DELIVERIES_COL, d.id), { x: newPos.x, y: newPos.y, occupied:false, strawberryId:null });
-      }
-    }
-  }
-}
-
-/* Seed walls if empty: generate maze & save walls. Then seed deliveries & strawberries */
-async function seedWallsIfEmpty(){
-  const wSnap = await getDocs(collection(db, WALLS_COL));
-  if (wSnap.size === 0){
-    await generateMazeAndSave();
-  }
-  // load walls into client variable
-  const wallsSnap = await getDocs(collection(db, WALLS_COL));
-  walls = []; wallsSnap.forEach(d => { const data = d.data(); data._id = d.id; walls.push(data); });
-  // seed deliveries and strawberries
-  await seedDeliveries();
-  await seedStrawberries();
-}
-
-/* Join flow: stable (wait for listeners), start BGM on join */
+/* ========== Stable join flow (prevents first-join bug) ========== */
 async function joinAs(name, team){
   showLoading(true);
   await ensureGame();
   try {
-    // remove same-name previous
+    // delete same-name previous
     try {
       const snaps = await getDocs(collection(db, PLAYERS_COL));
       for (const d of snaps.docs){
         const data = d.data();
         if (data && data.name === name){
-          try { await deleteDoc(d.ref); pushLog(`古いセッション(${name})を削除`, "info"); } catch(e){}
+          try { await deleteDoc(d.ref); log(`古いセッション(${name})を削除`, "info"); } catch(e){}
         }
       }
     } catch(e){}
-    // create player doc with spawn not in wall
-    // ensure walls loaded
-    if (walls.length === 0) await seedWallsIfEmpty();
-    const pos = randomPassagePosition();
+    // create player doc in safe passable pos
+    const pos = randomPassablePos();
     const pRef = await addDoc(collection(db, PLAYERS_COL), {
-      name: name || "Player", team, x: pos.x, y: pos.y,
-      possession: 0, lastAction: serverTimestamp(), dashReadyAt: 0, carryingStraw: null
+      name: name || "Player", team, x: pos.x, y: pos.y, possession: 0, lastAction: serverTimestamp(), dashReadyAt: 0, carryingStraw: null
     });
     sessionId = pRef.id;
     setupListeners();
-    // wait until local player appears
+    // wait for snapshot reflect
     const start = Date.now(); let ok=false;
-    while(Date.now() - start < 5000){
+    while(Date.now()-start < 5000){
       if (allPlayers.find(p => p._id === sessionId)){ ok=true; break; }
       await new Promise(r => setTimeout(r,150));
     }
-    if (!ok) pushLog("参加反映遅延がありますが続行します", "error");
-    // set game to playing if waiting
+    if (!ok) log("参加の反映に遅延がありますが続行します", "error");
+    // set playing if waiting
     try {
       await runTransaction(db, async (t) => {
         const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
@@ -484,78 +603,82 @@ async function joinAs(name, team){
         if (g.state === "waiting") t.update(gRef, { state: "playing" });
       });
     } catch(e){}
-    // start BGM (user interacted)
-    try { bgmAudio.currentTime = 0; bgmAudio.play().catch(()=>{}); } catch(e){}
+    // play bgm (user interaction ensures browser allows)
+    try { bgmAudio.currentTime = 0; bgmAudio.play().catch(()=>{}); isBgmPlaying=true; } catch(e){}
     showLoading(false);
     showScreen("game");
     updateStatus("参加中: " + name + " (" + team + ")");
-    pushLog(`${name} が参加しました (チーム: ${team})`, "event");
+    log(`${name} が参加しました (チーム: ${team})`, "event");
   } catch(e){
     showLoading(false);
-    pushLog("参加失敗: "+(e.message||e), "error");
+    log("参加失敗: "+(e.message||e), "error");
     alert("参加に失敗しました。コンソールを確認してください。");
   }
 }
 
-/* Leave: stop BGM */
-async function leave(){
-  if (!sessionId) return;
-  try { await deleteDoc(doc(db, PLAYERS_COL, sessionId)); } catch(e){}
-  sessionId = null; localPlayer = null;
-  tearDownListeners();
-  showScreen("waiting");
-  updateStatus("離脱しました");
-  try { bgmAudio.pause(); bgmAudio.currentTime=0; } catch(e){}
-}
-
-/* Setup listeners for game, players, strawberries, deliveries, walls */
+/* ========== Listeners (players, strawberries, deliveries, walls meta) ========== */
 function setupListeners(){
+  const metaRef = doc(db, GAME_COLLECTION, GAME_DOC_ID + "_meta");
+  // walls meta
+  metaRef && onSnapshot(metaRef, (snap)=>{
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const wallIds = data.walls || [];
+    wallsRectangles = [];
+    for (const key of wallIds){
+      const [r,c] = key.split("_").map(x=>parseInt(x));
+      if (!Number.isFinite(r) || !Number.isFinite(c)) continue;
+      wallsRectangles.push({x:c*CELL_SIZE, y:r*CELL_SIZE, w:CELL_SIZE, h:CELL_SIZE});
+    }
+  });
+
   if (unsubGame) unsubGame();
   unsubGame = onSnapshot(doc(db, GAME_COLLECTION, GAME_DOC_ID), (snap) => {
     if (!snap.exists()) return;
     gameDoc = snap.data();
     topOni.textContent = gameDoc.scores?.oni || 0;
-    if (gameDoc.state === "waiting") { pushLog("ラウンド待機に戻りました", "info"); showScreen("team"); }
+    if (gameDoc.state === "waiting") { log("ラウンド待機に戻りました", "info"); showScreen("team"); }
   });
 
   if (unsubPlayers) unsubPlayers();
   unsubPlayers = onSnapshot(collection(db, PLAYERS_COL), (snap) => {
-    const arr=[]; snap.forEach(d => { const data = d.data(); data._id = d.id; arr.push(data); });
-    allPlayers = arr;
-    localPlayer = allPlayers.find(p => p._id === sessionId) || localPlayer;
-    const oniCount = allPlayers.filter(p => p.team === "oni").length;
-    const runnerCount = allPlayers.filter(p => p.team === "runner").length;
+    const arr=[]; snap.forEach(d=>{const data=d.data(); data._id=d.id; arr.push(data);});
+    allPlayers=arr;
+    localPlayer = allPlayers.find(p=>p._id===sessionId) || localPlayer;
+    const oniCount = allPlayers.filter(p=>p.team==="oni").length;
+    const runnerCount = allPlayers.filter(p=>p.team==="runner").length;
     oniCountEl.textContent = "人数: " + oniCount;
     runnerCountEl.textContent = "人数: " + runnerCount;
-    waitOniCount.textContent = oniCount; waitRunnerCount.textContent = runnerCount;
-    if (localPlayer){ playerInfoName.textContent = localPlayer.name; playerInfoTeam.textContent = "チーム: " + localPlayer.team; } else { playerInfoName.textContent="未参加"; playerInfoTeam.textContent="チーム: -"; }
+    waitOniCount.textContent = oniCount;
+    waitRunnerCount.textContent = runnerCount;
+    if (localPlayer){ playerInfoName.textContent = localPlayer.name; playerInfoTeam.textContent = "チーム: " + localPlayer.team; } else { playerInfoName.textContent = "未参加"; playerInfoTeam.textContent = "チーム: -"; }
     renderPlayerList();
-    for (const s of strawberries) attemptCollectStraw(s);
+    // ensure no player inside wall: respawn if inside
+    for (const p of allPlayers){
+      if (p.x===undefined||p.y===undefined) continue;
+      if (pointInsideWall(p.x,p.y)){
+        const safe = findNearestFreePos(p.x,p.y);
+        try{ updateDoc(doc(db, PLAYERS_COL, p._id), { x: safe.x, y: safe.y, lastAction: serverTimestamp() }); } catch(e){}
+      }
+    }
   });
 
   if (unsubStraw) unsubStraw();
   unsubStraw = onSnapshot(collection(db, STRAWBERRIES_COL), (snap) => {
-    const arr=[]; snap.forEach(d=>{ const data=d.data(); data._id=d.id; arr.push(data); });
+    const arr=[]; snap.forEach(d=>{const data=d.data(); data._id=d.id; arr.push(data);});
     strawberries = arr;
-    for (const s of strawberries) attemptCollectStraw(s);
   });
 
   if (unsubDeliveries) unsubDeliveries();
   unsubDeliveries = onSnapshot(collection(db, DELIVERIES_COL), (snap) => {
-    const arr=[]; snap.forEach(d=>{ const data=d.data(); data._id=d.id; arr.push(data); });
+    const arr=[]; snap.forEach(d=>{const data=d.data(); data._id=d.id; arr.push(data);});
     deliveries = arr;
     const occupied = deliveries.filter(d=>d.occupied).length;
     topRunnerRem.textContent = Math.max(0, 4 - occupied);
-    if (deliveries.length >=4 && occupied >=4){
-      pushLog("逃げチームが全納品所を埋めました！逃げ勝利！", "event");
+    if (deliveries.length >=4 && occupied>=4){
+      log("逃げチームが全納品所を埋めました！逃げ勝利！", "event");
       (async ()=>{ const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID); const gSnap = await getDoc(gRef); const g = gSnap.exists()?gSnap.data():{scores:{oni:0,runner:0}}; await setDoc(gRef, {...g, state:"ended"}); await finalizeAndResetRound(); })();
     }
-  });
-
-  if (unsubWalls) unsubWalls();
-  unsubWalls = onSnapshot(collection(db, WALLS_COL), (snap) => {
-    const arr=[]; snap.forEach(d=>{ const data=d.data(); data._id = d.id; arr.push(data); });
-    walls = arr;
   });
 }
 
@@ -565,12 +688,11 @@ function tearDownListeners(){
   if (unsubPlayers) unsubPlayers(); unsubPlayers=null;
   if (unsubStraw) unsubStraw(); unsubStraw=null;
   if (unsubDeliveries) unsubDeliveries(); unsubDeliveries=null;
-  if (unsubWalls) unsubWalls(); unsubWalls=null;
-  allPlayers=[]; strawberries=[]; deliveries=[]; walls=[]; gameDoc=null;
+  allPlayers=[]; strawberries=[]; deliveries=[]; wallsRectangles=[]; gameDoc=null;
   renderPlayerList();
 }
 
-/* Finalize & reset: delete collections and re-seed walls/objects */
+/* ========== Finalize & Reset ========== */
 async function finalizeAndResetRound(){
   try {
     async function delAll(col){
@@ -582,218 +704,118 @@ async function finalizeAndResetRound(){
     await delAll(PLAYERS_COL);
     await delAll(STRAWBERRIES_COL);
     await delAll(DELIVERIES_COL);
-    await delAll(WALLS_COL);
+    // delete meta doc
+    try { await deleteDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID + "_meta")); } catch(e){}
     await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { state:"waiting", scores:{oni:0, runner:0}, mapSize:MAP_SIZE, runnerRemaining:4, createdAt: serverTimestamp() });
-    pushLog("ラウンドリセット（全データ削除）", "event");
-    await generateMazeAndSave();
-    // walls will be reloaded by onSnapshot
+    log("全データ削除：ラウンドリセット", "event");
+    // regenerate maze & seed objects
+    await createAndStoreMazeIfNeeded();
+    await seedMapOnce(); // write walls & objects properly
   } catch(e){ console.error("finalize err", e); }
 }
 
-/* Maze generation: see earlier function */
-async function generateMazeAndSave(){
-  const cols = Math.floor(MAP_SIZE / CELL_SIZE);
-  const rows = Math.floor(MAP_SIZE / CELL_SIZE);
-  if (cols < 3 || rows < 3){ pushLog("MAP/CELL_SIZE too small", "error"); return; }
-  const visited = Array(rows).fill(0).map(()=>Array(cols).fill(false));
-  const stack = [];
-  const startR = Math.floor(Math.random()*rows), startC = Math.floor(Math.random()*cols);
-  stack.push([startR,startC]); visited[startR][startC]=true;
-  const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
-  const passage = Array(rows).fill(0).map(()=>Array(cols).fill(false));
-  passage[startR][startC]=true;
-  while(stack.length){
-    const [r,c] = stack[stack.length-1];
-    const ds = dirs.slice().sort(()=>Math.random()-0.5);
-    let moved=false;
-    for (const [dr,dc] of ds){
-      const nr=r+dr, nc=c+dc;
-      if (nr>=0 && nr<rows && nc>=0 && nc<cols && !visited[nr][nc]){
-        visited[nr][nc]=true; passage[nr][nc]=true; stack.push([nr,nc]); moved=true; break;
-      }
-    }
-    if (!moved) stack.pop();
-  }
-  // clear previous walls
+/* ========== Seed map once: create maze, store walls, create deliveries & strawberries safely ========== */
+async function seedMapOnce(){
   try {
-    const existing = await getDocs(collection(db, WALLS_COL));
-    const batch = writeBatch(db);
-    existing.forEach(d => batch.delete(d.ref));
-    await batch.commit();
-  } catch(e){}
-  // create walls for every non-passage cell
-  try {
-    for (let r=0;r<rows;r++){
-      for (let c=0;c<cols;c++){
-        if (!passage[r][c]){
-          const x = Math.floor(c * CELL_SIZE);
-          const y = Math.floor(r * CELL_SIZE);
-          const w = CELL_SIZE;
-          const h = CELL_SIZE;
-          await addDoc(collection(db, WALLS_COL), { x,y,w,h });
-        }
-      }
-    }
-    pushLog("迷路（walls）を生成しました", "event");
-  } catch(e){ pushLog("迷路生成エラー:"+e.message, "error"); }
+    // create maze meta if not exist
+    await createAndStoreMazeIfNeeded();
+    // ensure deliveries and strawberries properly placed without overlapping walls
+    await seedObjectsSafely();
+  } catch(e){ console.error("seedMapOnce err", e); }
 }
 
-/* pointInWalls with margin */
-function pointInWalls(x,y, margin=8){
-  for (const w of walls){
-    if (x >= w.x - margin && x <= w.x + w.w + margin && y >= w.y - margin && y <= w.y + w.h + margin) return true;
-  }
-  return false;
-}
-
-/* randomPassagePosition uses grid cell centers to ensure not in wall */
-function randomPassagePosition(){
-  for (let i=0;i<400;i++){
-    const c = Math.floor(Math.random() * Math.floor(MAP_SIZE / CELL_SIZE));
-    const r = Math.floor(Math.random() * Math.floor(MAP_SIZE / CELL_SIZE));
-    const px = Math.floor(c * CELL_SIZE + CELL_SIZE/2 + (Math.random()-0.5) * (CELL_PASSAGE_WIDTH/2));
-    const py = Math.floor(r * CELL_SIZE + CELL_SIZE/2 + (Math.random()-0.5) * (CELL_PASSAGE_WIDTH/2));
-    if (!pointInWalls(px,py, 12)) return { x: clamp(px,0,MAP_SIZE), y: clamp(py,0,MAP_SIZE) };
-  }
-  for (let i=0;i<2000;i++){
-    const p = randPosCentral();
-    if (!pointInWalls(p.x,p.y,12)) return p;
-  }
-  return { x: MAP_SIZE/2, y: MAP_SIZE/2 };
-}
-
-/* seed deliveries & strawberries after maze ready */
-async function seedMapObjects(){
-  await seedDeliveries();
-  await seedStrawberries();
-}
-
-/* seed deliveries */
-async function seedDeliveries(){
-  const dSnap = await getDocs(collection(db, DELIVERIES_COL));
-  if (dSnap.size === 0){
-    const pts = [
-      { x: 80, y: 80, occupied:false, strawberryId:null },
-      { x: MAP_SIZE-80, y: 80, occupied:false, strawberryId:null },
-      { x: 80, y: MAP_SIZE-80, occupied:false, strawberryId:null },
-      { x: MAP_SIZE-80, y: MAP_SIZE-80, occupied:false, strawberryId:null }
-    ];
-    for (const p of pts){
-      // ensure not inside wall: if so, find nearest passage pos
-      if (pointInWalls(p.x,p.y,12)){
-        const np = randomPassagePosition();
-        p.x = np.x; p.y = np.y;
-      }
-      await addDoc(collection(db, DELIVERIES_COL), p);
-    }
-  } else {
-    // fix any delivery overlapping wall
-    for (const d of dSnap.docs){
-      const data = d.data();
-      if (pointInWalls(data.x,data.y,12)){
-        const np = randomPassagePosition();
-        await updateDoc(doc(db, DELIVERIES_COL, d.id), { x: np.x, y: np.y, occupied:false, strawberryId:null });
-      }
-    }
-  }
-}
-
-/* seed strawberries */
-async function seedStrawberries(){
-  const sSnap = await getDocs(collection(db, STRAWBERRIES_COL));
-  if (sSnap.size === 0){
-    for (let i=0;i<4;i++){
-      const pos = randomPassagePosition();
-      await addDoc(collection(db, STRAWBERRIES_COL), { x: pos.x, y: pos.y, available: true, ownerId: null, placedAtDelivery: null });
-    }
-  } else {
-    if (sSnap.size < 4){
-      for (let i=sSnap.size;i<4;i++){
-        const pos = randomPassagePosition();
-        await addDoc(collection(db, STRAWBERRIES_COL), { x: pos.x, y: pos.y, available: true, ownerId: null, placedAtDelivery: null });
-      }
-    } else {
-      // ensure no strawberry inside wall & ownerId consistency
-      for (const d of sSnap.docs){
-        const s = d.data();
-        if (pointInWalls(s.x, s.y, 12) || s.ownerId && !allPlayers.find(p=>p._id===s.ownerId)){
-          // move to passage and clear owner
-          const pos = randomPassagePosition();
-          await updateDoc(doc(db, STRAWBERRIES_COL, d.id), { x: pos.x, y: pos.y, available: true, ownerId: null, placedAtDelivery: null });
-        }
-      }
-    }
-  }
-}
-
-/* Carry mechanics:
-   - tryStartCarryIfNear: transactionally set ownerId if null; also if placedAtDelivery, unmark delivery occupied
-   - releaseCarry: ownerId -> null, available true at current pos, player.carryingStraw set null
-   - pick-up always attempts to claim using transaction; this solves rare non-responsiveness
+/* ========== Carry mechanics (robust pickup & placement) ========== */
+/* Attempt pickup by transaction that force-claims nearest strawberry within radius.
+   This function ensures even if strawberry data is weird (available false but ownerId null or placed), the player can pick it by relocating it to player's pos and setting ownerId.
 */
-async function tryStartCarryIfNear(){
-  if (!localPlayer || !sessionId) return;
-  if (localPlayer.team !== "runner") return;
-  if (localPlayer.carryingStraw) return;
-  for (const s of strawberries){
-    // pick nearest strawberry within PICKUP_RADIUS
-    const d = Math.hypot(localPlayer.x - s.x, localPlayer.y - s.y);
-    if (d <= PICKUP_RADIUS){
-      try {
-        await runTransaction(db, async (t) => {
-          const sRef = doc(db, STRAWBERRIES_COL, s._id);
-          const sSnap = await t.get(sRef);
-          if (!sSnap.exists()) throw new Error("straw missing");
-          const sd = sSnap.data();
-          // if currently owned by someone else, cannot take
-          if (sd.ownerId && sd.ownerId !== sessionId) throw new Error("owned");
-          // if placed at delivery, free that delivery
-          if (sd.placedAtDelivery){
-            const dRef = doc(db, DELIVERIES_COL, sd.placedAtDelivery);
-            const dSnap = await t.get(dRef);
-            if (dSnap.exists()) t.update(dRef, { occupied: false, strawberryId: null });
-          }
-          // claim
-          t.update(sRef, { ownerId: sessionId, available: false, placedAtDelivery: null });
-          t.update(doc(db, PLAYERS_COL, sessionId), { carryingStraw: s._id, lastAction: serverTimestamp() });
-        });
-        pushLog(`${localPlayer.name} がイチゴを掴みました`, "event");
-      } catch(e){
-        // conflict or owned: ignore
+async function pickupNearestStrawbyForce(playerId, playerX, playerY){
+  try {
+    // find nearest strawberry within PICKUP_RADIUS (local cache)
+    let nearest = null; let nd = Infinity;
+    for (const s of strawberries){
+      if (s.placedAtDelivery) continue; // placed on delivery can't be picked
+      const d = Math.hypot(s.x - playerX, s.y - playerY);
+      if (d <= PICKUP_RADIUS && d < nd){ nd = d; nearest = s; }
+    }
+    if (!nearest){
+      // no nearby strawberry; try expand radius up to CELL_SIZE
+      for (const s of strawberries){
+        if (s.placedAtDelivery) continue;
+        const d = Math.hypot(s.x - playerX, s.y - playerY);
+        if (d <= CELL_SIZE && d < nd){ nd = d; nearest = s; }
       }
-      return;
+    }
+    if (!nearest) return false;
+    // transactionally claim or force-claim
+    const sRef = doc(db, STRAWBERRIES_COL, nearest._id);
+    await runTransaction(db, async (t) => {
+      const snap = await t.get(sRef);
+      if (!snap.exists()) throw new Error("straw missing");
+      const s = snap.data();
+      // if it's already owned by someone else, abort
+      if (s.ownerId && s.ownerId !== playerId) throw new Error("owned by another");
+      // allow pickup even if available=false but ownerId=null (force)
+      t.update(sRef, { ownerId: playerId, available: false, x: playerX, y: playerY, placedAtDelivery: null });
+      // set player.carryingStraw
+      const pRef = doc(db, PLAYERS_COL, playerId);
+      t.update(pRef, { carryingStraw: nearest._id, lastAction: serverTimestamp() });
+    });
+    return true;
+  } catch(e){
+    // fallback: try to directly set owner if possible
+    try {
+      const s = nearest;
+      if (!s) return false;
+      await updateDoc(doc(db, STRAWBERRIES_COL, s._id), { ownerId: playerId, available: false, x: playerX, y: playerY, placedAtDelivery: null });
+      try { await updateDoc(doc(db, PLAYERS_COL, playerId), { carryingStraw: s._id, lastAction: serverTimestamp() }); } catch(e){}
+      return true;
+    } catch(ex){
+      return false;
     }
   }
 }
 
-/* releaseCarry by strawberry id */
-async function releaseCarryById(strawId){
-  if (!strawId) return;
+/* Release carry (place at current position): allow re-pickup afterwards (ownerId cleared) */
+async function placeCarriedStraw(playerId){
   try {
-    // place at player's current pos (player must exist locally)
-    const strawRef = doc(db, STRAWBERRIES_COL, strawId);
-    await updateDoc(strawRef, { ownerId: null, available: true, x: localPlayer.x, y: localPlayer.y, placedAtDelivery: null });
-    try { await updateDoc(doc(db, PLAYERS_COL, sessionId), { carryingStraw: null, lastAction: serverTimestamp() }); } catch(e){}
-    pushLog("イチゴを設置しました", "info");
-  } catch(e){ console.error(e); }
+    const pSnap = await getDoc(doc(db, PLAYERS_COL, playerId));
+    if (!pSnap.exists()) return;
+    const p = pSnap.data();
+    const strawId = p.carryingStraw;
+    if (!strawId) return;
+    const sRef = doc(db, STRAWBERRIES_COL, strawId);
+    const sSnap = await getDoc(sRef);
+    if (!sSnap.exists()) return;
+    const s = sSnap.data();
+    // ensure position not inside wall: if inside, move to nearest free
+    let sx = s.x, sy = s.y;
+    if (pointInsideWall(sx,sy)){
+      const safe = findNearestFreePos(sx,sy);
+      sx = safe.x; sy = safe.y;
+    }
+    await runTransaction(db, async (t) => {
+      t.update(sRef, { ownerId: null, available: true, x: sx, y: sy, placedAtDelivery: null });
+      t.update(doc(db, PLAYERS_COL, playerId), { carryingStraw: null, lastAction: serverTimestamp() });
+    });
+    log("イチゴをその場に設置しました", "event");
+  } catch(e){ console.error("placeCarriedStraw err", e); }
 }
 
-/* If carrying strawberry is near a delivery, place it (transactionally) */
+/* checkPlacedOnDelivery for a strawberry (called when strawberry has ownerId null and is at a delivery pos or when carrier moves) */
 async function checkPlacedOnDelivery(straw){
-  if (!straw || !straw.ownerId) return;
-  for (const d of deliveries){
-    const dist = Math.hypot(straw.x - d.x, straw.y - d.y);
-    if (dist <= PICKUP_RADIUS && !d.occupied){
-      try {
+  try {
+    if (!straw || straw.placedAtDelivery) return;
+    for (const d of deliveries){
+      const dist = Math.hypot(straw.x - d.x, straw.y - d.y);
+      if (dist <= PICKUP_RADIUS && !d.occupied){
         await runTransaction(db, async (t) => {
           const dRef = doc(db, DELIVERIES_COL, d._id);
           const dSnap = await t.get(dRef);
           if (!dSnap.exists()) return;
-          const dData = dSnap.data();
-          if (dData.occupied) return;
+          if (dSnap.data().occupied) return;
           t.update(dRef, { occupied: true, strawberryId: straw._id });
           const sRef = doc(db, STRAWBERRIES_COL, straw._id);
-          t.update(sRef, { ownerId: null, available: false, placedAtDelivery: d._id, x: d.x, y: d.y });
+          t.update(sRef, { ownerId: null, available: false, placedAtDelivery: d._id });
           const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
           const gSnap = await t.get(gRef);
           if (gSnap.exists()){
@@ -802,19 +824,19 @@ async function checkPlacedOnDelivery(straw){
             t.update(gRef, { runnerRemaining: remaining });
           }
         });
-        pushLog("イチゴが納品所に設置されました", "event");
-      } catch(e){}
-      return;
+        log("イチゴが納品所に設置されました", "event");
+        return;
+      }
     }
-  }
+  } catch(e){ console.error("checkPlacedOnDelivery err", e); }
 }
 
-/* attemptCollectStraw: previous auto-collect when 2+ runners near (kept for compatibility) */
+/* attemptCollectStraw: keep original cooperative auto-collection behavior but robust */
 async function attemptCollectStraw(straw){
-  if (!straw || !straw.available || straw.ownerId) return;
-  const nearby = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - straw.x, p.y - straw.y) <= PICKUP_RADIUS);
-  if (nearby.length >= 2){
-    try {
+  try {
+    if (!straw || !straw.available || straw.ownerId) return;
+    const nearby = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - straw.x, p.y - straw.y) <= PICKUP_RADIUS);
+    if (nearby.length >= 2){
       await runTransaction(db, async (t) => {
         const sRef = doc(db, STRAWBERRIES_COL, straw._id);
         const sSnap = await t.get(sRef);
@@ -830,15 +852,268 @@ async function attemptCollectStraw(straw){
           t.update(pRef, { possession: cur + 1, lastAction: serverTimestamp() });
         }
       });
-      pushLog(`イチゴ回収: ${nearby.map(n=>n.name).join(", ")}`, "event");
+      log(`イチゴ自動回収: ${nearby.map(n=>n.name).join(", ")}`, "event");
       if (STRAW_RESPAWN_IMMEDIATE){
-        try { const newPos = randomPassagePosition(); await updateDoc(doc(db, STRAWBERRIES_COL, straw._id), { x: newPos.x, y: newPos.y, available: true, ownerId: null, placedAtDelivery: null }); } catch(e){}
+        const newPos = randomPassablePos();
+        try { await updateDoc(doc(db, STRAWBERRIES_COL, straw._id), { x: newPos.x, y: newPos.y, available: true, ownerId: null, placedAtDelivery: null }); } catch(e){}
       }
-    } catch(e){}
+    }
+  } catch(e){ /* ignore race errors */ }
+}
+
+/* ========== Movement collision avoidance (prevents getting stuck) ===========
+   - before applying new position, test if new pos circle collides with any wall rect
+   - if collides try sliding along x or y, else reduce step in half iteratively up to N times
+*/
+function isCollidingWithWalls(x, y, radius=PLAYER_RADIUS){
+  for (const rect of wallsRectangles){
+    if (circleRectOverlap(x,y,radius,rect)) return true;
+  }
+  return false;
+}
+
+function resolveMovement(currX, currY, desiredX, desiredY){
+  // if desired not colliding, return it
+  if (!isCollidingWithWalls(desiredX, desiredY)) return {x:desiredX,y:desiredY};
+  // try sliding on X only
+  if (!isCollidingWithWalls(desiredX, currY)) return {x:desiredX,y:currY};
+  // try sliding on Y only
+  if (!isCollidingWithWalls(currX, desiredY)) return {x:currX,y:desiredY};
+  // try shrinking movement: binary search steps
+  let low = 0.0, high = 1.0, best = {x:currX,y:currY};
+  for (let i=0;i<6;i++){
+    const mid = (low+high)/2;
+    const nx = currX + (desiredX-currX)*mid;
+    const ny = currY + (desiredY-currY)*mid;
+    if (!isCollidingWithWalls(nx,ny)){ best={x:nx,y:ny}; low = mid; } else { high = mid; }
+  }
+  return best;
+}
+
+/* ========== Player actions: pickup (Shift press) & place (Shift release) ==========
+   - pickupNearestStrawbyForce ensures consistent pickup even if prior inconsistent states
+   - placeCarriedStraw relocates to nearest free pos if needed and clears ownerId, allowing re-pickup
+*/
+async function pickupNearestStrawbyForceLocal(){
+  if (!localPlayer) return;
+  const ok = await pickupNearestStrawbyForce(sessionId, localPlayer.x, localPlayer.y);
+  if (ok) {
+    // update local state will come from snapshot; log done
+  } else {
+    // as fallback, try scan all strawberries and move the nearest one to player & claim
+    let nearest = null, nd=Infinity;
+    for (const s of strawberries){ const d = Math.hypot(s.x-localPlayer.x,s.y-localPlayer.y); if (d<nd){ nd=d; nearest=s; } }
+    if (nearest && nd <= CELL_SIZE){
+      try {
+        await updateDoc(doc(db, STRAWBERRIES_COL, nearest._id), { ownerId: sessionId, available: false, x: localPlayer.x, y: localPlayer.y, placedAtDelivery: null });
+        await updateDoc(doc(db, PLAYERS_COL, sessionId), { carryingStraw: nearest._id, lastAction: serverTimestamp() });
+      } catch(e){ /* ignore */ }
+    }
   }
 }
 
-/* capture: oni catches runner -> possession 0, respawn, +5 oni score */
+async function pickupNearestStrawbyForce(playerId, playerX, playerY){
+  // implemented above earlier in code area; reusing.
+  try {
+    let nearest=null, nd=Infinity;
+    for (const s of strawberries){
+      if (s.placedAtDelivery) continue;
+      const d = Math.hypot(s.x-playerX, s.y-playerY);
+      if (d <= Math.max(PICKUP_RADIUS, CELL_SIZE) && d < nd){ nd=d; nearest=s; }
+    }
+    if (!nearest) return false;
+    const sRef = doc(db, STRAWBERRIES_COL, nearest._id);
+    await runTransaction(db, async (t) => {
+      const snap = await t.get(sRef);
+      if (!snap.exists()) throw new Error("straw missing");
+      const s = snap.data();
+      if (s.ownerId && s.ownerId !== playerId) throw new Error("owned");
+      t.update(sRef, { ownerId: playerId, available: false, x: playerX, y: playerY, placedAtDelivery: null });
+      t.update(doc(db, PLAYERS_COL, playerId), { carryingStraw: nearest._id, lastAction: serverTimestamp() });
+    });
+    return true;
+  } catch(e){
+    // fallback direct write attempt
+    try {
+      if (!nearest) return false;
+      await updateDoc(doc(db, STRAWBERRIES_COL, nearest._id), { ownerId: playerId, available: false, x: playerX, y: playerY, placedAtDelivery: null });
+      try { await updateDoc(doc(db, PLAYERS_COL, playerId), { carryingStraw: nearest._id, lastAction: serverTimestamp() }); } catch(e){}
+      return true;
+    } catch(ex){ return false; }
+  }
+}
+
+/* placeCarriedStraw implemented earlier as releaseCarriedStraw, reuse name */
+async function releaseCarryByIdLocal(strawId){
+  if (!strawId) return;
+  try {
+    const sRef = doc(db, STRAWBERRIES_COL, strawId);
+    const sSnap = await getDoc(sRef);
+    if (!sSnap.exists()) return;
+    const s = sSnap.data();
+    let sx = s.x, sy = s.y;
+    if (pointInsideWall(sx,sy)){
+      const safe = findNearestFreePos(sx,sy);
+      sx = safe.x; sy = safe.y;
+    }
+    await runTransaction(db, async (t) => {
+      t.update(sRef, { ownerId: null, available: true, x: sx, y: sy, placedAtDelivery: null });
+      const pRef = doc(db, PLAYERS_COL, sessionId);
+      t.update(pRef, { carryingStraw: null, lastAction: serverTimestamp() });
+    });
+    log("イチゴを設置しました", "info");
+  } catch(e){ console.error("releaseCarryByIdLocal err", e); }
+}
+
+/* ========== Movement loop (collision-aware) ========== */
+const pressed = new Set();
+let lastKeyEventTime = Date.now();
+window.addEventListener('keydown', (e)=>{
+  const k = e.key.toLowerCase();
+  if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){
+    e.preventDefault(); lastKeyEventTime = Date.now(); pressed.add(k);
+    if (k === "shift" && localPlayer && localPlayer.team === "runner"){
+      // toggle pickup/place: if not carrying try pickup, if carrying place
+      if (!localPlayer.carryingStraw) pickupNearestStrawbyForceLocal();
+      else releaseCarryByIdLocal(localPlayer.carryingStraw);
+    }
+  }
+});
+window.addEventListener('keyup', (e)=>{ const k = e.key.toLowerCase(); if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){ e.preventDefault(); lastKeyEventTime = Date.now(); pressed.delete(k); }});
+window.addEventListener('blur', ()=> pressed.clear());
+setInterval(()=>{ if (Date.now() - lastKeyEventTime > 1000) pressed.clear(); }, 1200);
+
+setInterval(async ()=>{
+  if (!localPlayer || !sessionId) return;
+  let sp = localPlayer.team === "oni" ? ONI_SPEED : RUNNER_SPEED;
+  if (localPlayer.team === "oni" && (pressed.has("shift")) && canDash(localPlayer)) await startDash();
+  if (localPlayer._isDashingUntil && Date.now() < localPlayer._isDashingUntil) sp *= DASH_MULT;
+  if (localPlayer.carryingStraw) sp *= CARRY_SPEED_MULT;
+  if (localPlayer.team === "runner"){
+    const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team === "runner" && Math.hypot(p.x-localPlayer.x,p.y-localPlayer.y) <= COOP_BOOST_DIST);
+    if (nearby.length >= 1) sp *= COOP_SPEED_MULT;
+  }
+
+  let dx=0, dy=0;
+  if (pressed.has("a") || pressed.has("arrowleft")) dx -= 1;
+  if (pressed.has("d") || pressed.has("arrowright")) dx += 1;
+  if (pressed.has("w") || pressed.has("arrowup")) dy -= 1;
+  if (pressed.has("s") || pressed.has("arrowdown")) dy += 1;
+  if (dx===0 && dy===0){
+    // if carrying, ensure strawberry follows (throttled)
+    if (localPlayer.carryingStraw){
+      try { await updateDoc(doc(db, STRAWBERRIES_COL, localPlayer.carryingStraw), { x: localPlayer.x, y: localPlayer.y, ownerId: sessionId }); } catch(e){}
+    }
+    return;
+  }
+  const mag = Math.hypot(dx,dy) || 1;
+  dx = dx/mag * sp; dy = dy/mag * sp;
+  const desiredX = clamp(localPlayer.x + dx, 0, MAP_SIZE);
+  const desiredY = clamp(localPlayer.y + dy, 0, MAP_SIZE);
+  const resolved = resolveMovement(localPlayer.x, localPlayer.y, desiredX, desiredY);
+  // apply
+  localPlayer.x = resolved.x; localPlayer.y = resolved.y;
+  await sendPositionIfNeeded(resolved.x, resolved.y);
+  // if carrying, update strawberry pos and check delivery placement and auto-drop if oni near
+  if (localPlayer.carryingStraw){
+    try { await updateDoc(doc(db, STRAWBERRIES_COL, localPlayer.carryingStraw), { x: resolved.x, y: resolved.y, ownerId: sessionId }); } catch(e){}
+    const straw = strawberries.find(s=>s._id===localPlayer.carryingStraw);
+    if (straw) await checkPlacedOnDelivery(straw);
+    // auto-drop when any oni is close
+    const onis = allPlayers.filter(p=>p.team==="oni");
+    for (const o of onis){
+      const d = Math.hypot(o.x - localPlayer.x, o.y - localPlayer.y);
+      if (d <= CAPTURE_RADIUS * 1.2){
+        await releaseCarryByIdLocal(localPlayer.carryingStraw);
+        log("近くに鬼が来たためイチゴを強制設置しました", "event");
+        break;
+      }
+    }
+  } else {
+    // if not carrying and shift down, try pickup force (redundant)
+    if (pressed.has("shift")) await pickupNearestStrawbyForceLocal();
+  }
+  await tryDeliver(localPlayer);
+  for (const s of strawberries) attemptCollectStraw(s);
+  await checkCapturesAndHandle();
+}, 100);
+
+/* Footstep sound: runners hear if oni within VISIBILITY_RADIUS * FOOTSTEP_RANGE_MULT */
+setInterval(()=>{
+  if (!localPlayer) return;
+  if (localPlayer.team === "runner"){
+    const onis = allPlayers.filter(p=>p.team==="oni");
+    for(const o of onis){
+      const d = Math.hypot(o.x - localPlayer.x, o.y - localPlayer.y);
+      if (d <= VISIBILITY_RADIUS * FOOTSTEP_RANGE_MULT){
+        asiotoAudio.currentTime = 0; asiotoAudio.play().catch(()=>{});
+        break;
+      }
+    }
+  }
+}, 900);
+
+/* ========== Delivery & Capture logic (same as before but safe) ========== */
+async function tryDeliver(player){
+  if (!player || player.team !== "runner") return;
+  for (const d of deliveries){
+    const dist = Math.hypot(player.x - d.x, player.y - d.y);
+    if (dist <= PICKUP_RADIUS){
+      // if player's carryingStraw, and that straw placed by checkPlacedOnDelivery will mark delivery. But implement fallback:
+      if (player.carryingStraw){
+        // place carried to this delivery
+        try {
+          await runTransaction(db, async (t) => {
+            const dRef = doc(db, DELIVERIES_COL, d._id);
+            const dSnap = await t.get(dRef);
+            if (!dSnap.exists()) return;
+            if (dSnap.data().occupied) return;
+            t.update(dRef, { occupied: true, strawberryId: player.carryingStraw });
+            t.update(doc(db, STRAWBERRIES_COL, player.carryingStraw), { ownerId: null, available: false, placedAtDelivery: d._id });
+            t.update(doc(db, PLAYERS_COL, player._id), { carryingStraw: null, lastAction: serverTimestamp() });
+            const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
+            const gSnap = await t.get(gRef);
+            if (gSnap.exists()){
+              const g = gSnap.data();
+              const remaining = Math.max(0, (g.runnerRemaining || 4)-1);
+              t.update(gRef, { runnerRemaining: remaining });
+            }
+          });
+          log(`${player.name} が納品所にイチゴを設置しました`, "event");
+        } catch(e){}
+      } else {
+        // deliver by possession method (possession based)
+        const amount = player.possession || 0;
+        if (amount <= 0) return;
+        try {
+          await runTransaction(db, async (t) => {
+            const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
+            const gSnap = await t.get(gRef);
+            if (!gSnap.exists()) throw new Error("game missing");
+            const g = gSnap.data();
+            const scores = g.scores || { oni:0, runner:0 };
+            scores.runner = (scores.runner || 0) + amount;
+            t.update(gRef, { scores, lastUpdated: serverTimestamp() });
+            t.update(doc(db, PLAYERS_COL, player._id), { possession: 0, lastAction: serverTimestamp() });
+          });
+          log(`${player.name} が納品！ +${amount}`, "event");
+          const gSnap2 = await getDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID));
+          if (gSnap2.exists()){
+            const g2 = gSnap2.data();
+            if ((g2.scores?.runner || 0) >= WIN_SCORE){
+              log("逃げチームが勝利！ラウンド終了します", "event");
+              await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { ...g2, state: "ended" });
+              await finalizeAndResetRound();
+            }
+          }
+        } catch(e){}
+      }
+      return;
+    }
+  }
+}
+
+/* capture: when oni catches runner (same as before) */
 async function checkCapturesAndHandle(){
   const onis = allPlayers.filter(p => p.team === "oni");
   const runners = allPlayers.filter(p => p.team === "runner");
@@ -858,13 +1133,14 @@ async function checkCapturesAndHandle(){
             scores.oni = (scores.oni || 0) + 5;
             t.update(gRef, { scores, lastUpdated: serverTimestamp() });
           });
-          pushLog(`${r.name} が捕まった！ 鬼チーム +5`, "event");
+          log(`${r.name} が捕まった！ 鬼チーム +5`, "event");
           explosionAudio.currentTime = 0; explosionAudio.play().catch(()=>{});
+          // check win
           const gSnap2 = await getDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID));
           if (gSnap2.exists()){
             const g2 = gSnap2.data();
             if ((g2.scores?.oni || 0) >= WIN_SCORE){
-              pushLog("鬼チームが勝利！ラウンド終了します", "event");
+              log("鬼チームが勝利！ラウンド終了します", "event");
               await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { ...g2, state: "ended" });
               await finalizeAndResetRound();
             }
@@ -876,124 +1152,185 @@ async function checkCapturesAndHandle(){
   }
 }
 
-/* position update (throttled) */
-async function sendPositionIfNeeded(x,y){
-  if (!sessionId) return;
-  const now = nowMillis();
-  if (now - lastPosSend < POSITION_THROTTLE_MS) return;
-  lastPosSend = now;
-  try { await updateDoc(doc(db, PLAYERS_COL, sessionId), { x, y, lastAction: serverTimestamp() }); } catch(e){}
+/* ========== Utility: randomPassablePos, findNearestFreePos ========== */
+function pointInsideWall(x,y){
+  for (const rect of wallsRectangles){
+    if (x >= rect.x && x <= rect.x+rect.w && y >= rect.y && y <= rect.y+rect.h) return true;
+  }
+  return false;
+}
+function randomPassablePos(){
+  for (let i=0;i<300;i++){
+    const c = Math.floor(Math.random()*MAZE_COLS), r = Math.floor(Math.random()*MAZE_ROWS);
+    const rectX = c*CELL_SIZE, rectY = r*CELL_SIZE;
+    const isWall = wallsRectangles.some(wr => wr.x === rectX && wr.y === rectY);
+    if (!isWall){
+      const margin = Math.max(PLAYER_RADIUS+4,8);
+      const px = clamp(rectX + margin + Math.random()*(CELL_SIZE - margin*2), rectX+margin, rectX+CELL_SIZE-margin);
+      const py = clamp(rectY + margin + Math.random()*(CELL_SIZE - margin*2), rectY+margin, rectY+CELL_SIZE-margin);
+      if (!pointInsideWall(px,py)) return {x:px,y:py};
+    }
+  }
+  // fallback spiral search
+  return findNearestFreePos(MAP_SIZE/2, MAP_SIZE/2);
+}
+function findNearestFreePos(x,y){
+  const c0 = clamp(Math.floor(x / CELL_SIZE), 0, MAZE_COLS-1);
+  const r0 = clamp(Math.floor(y / CELL_SIZE), 0, MAZE_ROWS-1);
+  const visited = Array.from({length:MAZE_ROWS},()=>Array(MAZE_COLS).fill(false));
+  const q = [{r:r0,c:c0}]; visited[r0][c0]=true;
+  while(q.length){
+    const cur = q.shift();
+    const cx = cur.c*CELL_SIZE + CELL_SIZE/2;
+    const cy = cur.r*CELL_SIZE + CELL_SIZE/2;
+    const overlapping = wallsRectangles.some(rect => circleRectOverlap(cx,cy,PLAYER_RADIUS+2,rect));
+    if (!overlapping) return {x:cx,y:cy};
+    const neighbors = [{dr:1,dc:0},{dr:-1,dc:0},{dr:0,dc:1},{dr:0,dc:-1}];
+    for (const n of neighbors){
+      const nr = cur.r + n.dr, nc = cur.c + n.dc;
+      if (nr>=0 && nr<MAZE_ROWS && nc>=0 && nc<MAZE_COLS && !visited[nr][nc]){
+        visited[nr][nc]=true; q.push({r:nr,c:nc});
+      }
+    }
+  }
+  // fallback random
+  for (let i=0;i<200;i++){
+    const px = Math.random()*MAP_SIZE, py = Math.random()*MAP_SIZE;
+    if (!pointInsideWall(px,py)) return {x:px,y:py};
+  }
+  return {x:MAP_SIZE/2,y:MAP_SIZE/2};
 }
 
-/* Dash handling */
-function canDash(p){ if (!p || p.team !== "oni") return false; const readyAt = p.dashReadyAt || 0; return Date.now() >= readyAt; }
-async function startDash(){ if (!localPlayer || localPlayer.team !== "oni") return; const now = Date.now(); try { await updateDoc(doc(db, PLAYERS_COL, sessionId), { dashReadyAt: now + DASH_CT_MS }); localPlayer._isDashingUntil = now + DASH_DUR_MS; setTimeout(()=>{ if (localPlayer) localPlayer._isDashingUntil = 0; }, DASH_DUR_MS); } catch(e){} }
+/* ========== draw & render functions ========== */
+function drawTextBubble(ctx, text, x, y, bg="#000", small=false){
+  ctx.save(); ctx.font = (small ? "12px sans-serif":"13px sans-serif"); const metrics = ctx.measureText(text); const padX=8; const w=metrics.width+padX*2; const h=18; const bx=x-w/2, by=y-h/2;
+  ctx.fillStyle = bg; const r=8; ctx.beginPath(); ctx.moveTo(bx+r,by); ctx.arcTo(bx+w,by,bx+w,by+h,r); ctx.arcTo(bx+w,by+h,bx,by+h,r); ctx.arcTo(bx,by+h,bx,by,r); ctx.arcTo(bx,by,bx+w,by,r); ctx.closePath(); ctx.fill();
+  ctx.fillStyle="#fff"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(text, x, y); ctx.restore();
+}
 
-/* Player movement with wall collision prevention:
-   - Before committing new position, check if that point lies inside wall (with margin = playerRadius)
-   - If collision detected, do not move (simple prevention)
-*/
-const PLAYER_RADIUS = 12; // used for collision margin
-setInterval(async ()=>{
-  if (!localPlayer || !sessionId) return;
-  let sp = localPlayer.team === "oni" ? ONI_SPEED : RUNNER_SPEED;
-  if (localPlayer.team === "oni" && (pressed.has("shift")) && canDash(localPlayer)) await startDash();
-  if (localPlayer._isDashingUntil && Date.now() < localPlayer._isDashingUntil) sp *= DASH_MULT;
-  if (localPlayer.carryingStraw) sp *= CARRY_SPEED_MULT;
-  if (localPlayer.team === "runner"){
-    const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team === "runner" && Math.hypot(p.x - localPlayer.x, p.y - localPlayer.y) <= COOP_BOOST_DIST);
-    if (nearby.length >= 1) sp *= COOP_SPEED_MULT;
-  }
-  let dx=0, dy=0;
-  if (pressed.has("a") || pressed.has("arrowleft")) dx -= 1;
-  if (pressed.has("d") || pressed.has("arrowright")) dx += 1;
-  if (pressed.has("w") || pressed.has("arrowup")) dy -= 1;
-  if (pressed.has("s") || pressed.has("arrowdown")) dy += 1;
-  if (dx===0 && dy===0){
-    if (localPlayer.carryingStraw){
-      try { await updateDoc(doc(db, STRAWBERRIES_COL, localPlayer.carryingStraw), { x: localPlayer.x, y: localPlayer.y }); } catch(e){}
-    }
-    return;
-  }
-  const mag = Math.hypot(dx,dy)||1; dx = dx/mag * sp; dy = dy/mag * sp;
-  const nx = clamp(localPlayer.x + dx, 0, MAP_SIZE), ny = clamp(localPlayer.y + dy, 0, MAP_SIZE);
-  // collision check: ensure nx,ny with margin PLAYER_RADIUS not inside any wall
-  if (!pointInWalls(nx, ny, PLAYER_RADIUS)){
-    localPlayer.x = nx; localPlayer.y = ny;
-    await sendPositionIfNeeded(nx, ny);
-    // carried strawberry follows
-    if (localPlayer.carryingStraw){
-      try { await updateDoc(doc(db, STRAWBERRIES_COL, localPlayer.carryingStraw), { x: nx, y: ny, ownerId: sessionId }); } catch(e){}
-      const straw = strawberries.find(s=>s._id===localPlayer.carryingStraw);
-      if (straw) await checkPlacedOnDelivery(straw);
-      // auto drop if any oni near within CAPTURE_RADIUS*1.2
-      const onis = allPlayers.filter(p=>p.team==="oni");
-      for (const o of onis){
-        const d = Math.hypot(o.x - localPlayer.x, o.y - localPlayer.y);
-        if (d <= CAPTURE_RADIUS * 1.2){
-          const strawId = localPlayer.carryingStraw;
-          if (strawId){ await releaseCarryById(strawId); pushLog("近くに鬼が来たためイチゴを強制設置しました","event"); }
-          break;
-        }
-      }
-    } else {
-      // attempt to start carry if shift pressed (fallback)
-      if (pressed.has("shift")) tryStartCarryIfNear();
-    }
-  } else {
-    // blocked by wall - do not move
-  }
-  await tryDeliver(localPlayer);
-  for (const s of strawberries) attemptCollectStraw(s);
-  await checkCapturesAndHandle();
-}, 100);
+function drawWorld(ctx, width, height, centerPlayer, applyVisibility){
+  ctx.clearRect(0,0,width,height);
+  let targetX = centerPlayer ? centerPlayer.x : MAP_SIZE/2;
+  let targetY = centerPlayer ? centerPlayer.y : MAP_SIZE/2;
+  const halfW = width/2, halfH = height/2;
+  targetX = clamp(targetX, halfW, MAP_SIZE - halfW);
+  targetY = clamp(targetY, halfH, MAP_SIZE - halfH);
+  camera.x += (targetX - camera.x) * camera.lerp;
+  camera.y += (targetY - camera.y) * camera.lerp;
+  const toScreenX = mx => mx - (camera.x - halfW);
+  const toScreenY = my => my - (camera.y - halfH);
 
-/* Input handling robust */
-const pressed = new Set(); let lastKeyEventTime = Date.now();
-window.addEventListener('keydown', (e)=>{
-  const k = e.key.toLowerCase();
-  if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){
-    e.preventDefault(); lastKeyEventTime = Date.now(); pressed.add(k);
-    if (k === "shift" && localPlayer && localPlayer.team === "runner" && sessionId){
-      // If pressing shift and not carrying -> attempt pickup; if carrying -> toggle place immediately
-      if (!localPlayer.carryingStraw) tryStartCarryIfNear();
-      else { const strawId = localPlayer.carryingStraw; if (strawId) releaseCarryById(strawId); }
-    }
+  // map
+  if (mapImageLoaded){ const scaleX = width / MAP_SIZE, scaleY = height / MAP_SIZE; ctx.drawImage(mapImage, (-(camera.x-halfW))*scaleX, (-(camera.y-halfH))*scaleY, MAP_SIZE*scaleX, MAP_SIZE*scaleY); }
+  else { ctx.fillStyle="#081018"; ctx.fillRect(0,0,width,height); }
+
+  // walls (draw rectangles)
+  ctx.fillStyle = "#222";
+  for (const rect of wallsRectangles){
+    const sx = toScreenX(rect.x), sy = toScreenY(rect.y);
+    const sw = rect.w, sh = rect.h;
+    ctx.fillRect(sx, sy, sw, sh);
   }
+
+  // deliveries
+  for (const d of deliveries){
+    const sx = toScreenX(d.x), sy = toScreenY(d.y);
+    const label = d.occupied ? "△ (設置済)" : "△ 納品所";
+    const color = d.occupied ? "#8be08b" : "#ffd39a";
+    drawTextBubble(ctx, label, sx, sy - 26, color);
+    // sprite if available
+  }
+
+  // strawberries
+  for (const s of strawberries){
+    const sx = toScreenX(s.x), sy = toScreenY(s.y);
+    let visible = true;
+    if (applyVisibility && centerPlayer && centerPlayer.team === "runner") visible = Math.hypot(centerPlayer.x - s.x, centerPlayer.y - s.y) <= VISIBILITY_RADIUS;
+    if (!visible) continue;
+    drawTextBubble(ctx, "・ イチゴ", sx, sy - 26, "#ff6b8a");
+    ctx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f";
+    ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI*2); ctx.fill();
+    const runnersNear = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - s.x, p.y - s.y) <= PICKUP_RADIUS);
+    if (runnersNear.length === 1){ ctx.strokeStyle="rgba(255,255,128,0.9)"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sx,sy,12,0,Math.PI*2); ctx.stroke(); ctx.lineWidth=1; }
+  }
+
+  // players
+  for (const p of allPlayers){
+    let visible = true;
+    if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
+      visible = (p._id === centerPlayer._id) || (Math.hypot(centerPlayer.x - p.x, centerPlayer.y - p.y) <= VISIBILITY_RADIUS);
+    }
+    if (!visible) continue;
+    const sx = toScreenX(p.x), sy = toScreenY(p.y);
+    if (p.team === "runner"){ ctx.fillStyle="#4db8ff"; ctx.beginPath(); ctx.arc(sx,sy,12,0,Math.PI*2); ctx.fill(); }
+    else { ctx.fillStyle="#ffcf4d"; ctx.fillRect(sx-12,sy-12,24,24); }
+    if (localPlayer && p._id === localPlayer._id){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; if (p.team==="runner"){ctx.beginPath();ctx.arc(sx,sy,15,0,Math.PI*2);ctx.stroke();}else ctx.strokeRect(sx-14,sy-14,28,28); ctx.lineWidth=1; }
+    if (p.team==="runner" && p.carryingStraw) drawTextBubble(ctx, "運搬中", sx, sy - 36, "#2b6b2b");
+    drawTextBubble(ctx, p.name, sx, sy + 20, "#000", true);
+  }
+
+  // darkness for runner
+  if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
+    ctx.save(); ctx.fillStyle="rgba(0,0,0,0.6)"; ctx.beginPath(); ctx.rect(0,0,width,height); ctx.arc(width/2, height/2, VISIBILITY_RADIUS,0,Math.PI*2,true); try{ ctx.fill('evenodd'); }catch(e){ ctx.globalCompositeOperation='destination-out'; ctx.fill(); ctx.globalCompositeOperation='source-over'; } ctx.restore();
+  }
+}
+
+/* minimap sync */
+function drawMiniMap(){
+  miniCtx.clearRect(0,0,miniMap.width,miniMap.height);
+  const w = miniMap.width, h = miniMap.height;
+  miniCtx.fillStyle="#041218"; miniCtx.fillRect(0,0,w,h);
+  if (mapImageLoaded) miniCtx.drawImage(mapImage,0,0,w,h);
+  for (const rect of wallsRectangles){ const sx=rect.x/MAP_SIZE*w, sy=rect.y/MAP_SIZE*h, sw=rect.w/MAP_SIZE*w, sh=rect.h/MAP_SIZE*h; miniCtx.fillStyle="#222"; miniCtx.fillRect(sx,sy,sw,sh); }
+  for (const d of deliveries){ const sx = d.x/MAP_SIZE*w, sy = d.y/MAP_SIZE*h; miniCtx.fillStyle = d.occupied ? "#8be08b" : "#ffd39a"; miniCtx.beginPath(); miniCtx.moveTo(sx,sy-6); miniCtx.lineTo(sx-6,sy+6); miniCtx.lineTo(sx+6,sy+6); miniCtx.closePath(); miniCtx.fill(); }
+  for (const s of strawberries){ const sx=s.x/MAP_SIZE*w, sy=s.y/MAP_SIZE*h; miniCtx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f"; miniCtx.beginPath(); miniCtx.arc(sx,sy,3,0,Math.PI*2); miniCtx.fill(); }
+  for (const p of allPlayers){ const sx=p.x/MAP_SIZE*w, sy=p.y/MAP_SIZE*h; miniCtx.fillStyle = p.team==="oni"? "#ffcf4d":"#4db8ff"; miniCtx.beginPath(); miniCtx.arc(sx,sy,3,0,Math.PI*2); miniCtx.fill(); }
+  miniCtx.strokeStyle="rgba(255,255,255,0.06)"; miniCtx.strokeRect(0,0,w,h);
+}
+
+/* render loop */
+function renderLoop(){ requestAnimationFrame(renderLoop); drawWorld(gctx, gameCanvas.width, gameCanvas.height, localPlayer, true); drawMiniMap(); updateDashStatusUI(); updateBoostUI(); }
+renderLoop();
+
+/* ========== UI / Hooks ========== */
+toTeamBtn.addEventListener('click', ()=> showScreen("team"));
+chooseOni.addEventListener('click', ()=>{ joinedTeamChoice="oni"; showScreen("join"); });
+chooseRunner.addEventListener('click', ()=>{ joinedTeamChoice="runner"; showScreen("join"); });
+backFromTeam.addEventListener('click', ()=> showScreen("waiting"));
+backFromJoin.addEventListener('click', ()=> showScreen("team"));
+
+joinNow.addEventListener('click', async ()=>{
+  const name = (inputName.value||"").trim();
+  if (!name){ alert("名前を入力してください"); return; }
+  if (!joinedTeamChoice){ alert("チームを選んでください"); return; }
+  await joinAs(name, joinedTeamChoice);
+  joinedTeamChoice = null; inputName.value = "";
 });
-window.addEventListener('keyup', (e)=>{
-  const k = e.key.toLowerCase();
-  if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){
-    e.preventDefault(); lastKeyEventTime = Date.now(); pressed.delete(k);
-    if (k === "shift" && localPlayer && localPlayer.team === "runner" && sessionId){
-      if (localPlayer.carryingStraw){ const strawId = localPlayer.carryingStraw; if (strawId) releaseCarryById(strawId); }
-    }
-  }
+
+leaveBtn.addEventListener('click', ()=> leave());
+
+adminSmall.addEventListener('click', async ()=>{
+  const pass = prompt("管理パスワードを入力してください:");
+  if (pass === ADMIN_PASS){ adminMode = true; adminResetBtn.classList.remove("hidden"); alert("管理モード有効"); renderPlayerList(); } else alert("パスワード不正");
 });
-window.addEventListener('blur', ()=> pressed.clear());
-setInterval(()=>{ if (Date.now() - lastKeyEventTime > 1000) pressed.clear(); }, 1200);
+adminResetBtn.addEventListener('click', async ()=>{
+  if (!adminMode) return alert("管理モードが必要です");
+  if (!confirm("全データを削除してリセットしますか？")) return;
+  await finalizeAndResetRound();
+});
+homeResetBtn.addEventListener('click', async ()=>{
+  const pass = prompt("管理パスワード:"); if (pass === ADMIN_PASS) await finalizeAndResetRound(); else alert("違います");
+});
 
-/* footstep: runners hear if oni within VISIBILITY_RADIUS * FOOTSTEP_RANGE_MULT */
-setInterval(()=>{
-  if (!localPlayer) return;
-  if (localPlayer.team === "runner"){
-    const onis = allPlayers.filter(p=>p.team==="oni");
-    for (const o of onis){
-      const d = Math.hypot(o.x - localPlayer.x, o.y - localPlayer.y);
-      if (d <= VISIBILITY_RADIUS * FOOTSTEP_RANGE_MULT){ asiotoAudio.currentTime=0; asiotoAudio.play().catch(()=>{}); break; }
-    }
-  }
-}, 900);
-
-/* player list: hide numeric 🍓; show "運搬中" only */
+/* ========== Player list & UI helpers ========== */
 function renderPlayerList(){
   playerListEl.innerHTML = "";
   const sorted = allPlayers.slice().sort((a,b)=> a.team.localeCompare(b.team) || (a.name||"").localeCompare(b.name));
   for (const p of sorted){
     const row = document.createElement("div"); row.className="playerRow";
     const left = document.createElement("div"); left.style.display="flex"; left.style.gap="8px"; left.style.alignItems="center";
-    const shape = document.createElement("div"); shape.style.width="14px"; shape.style.height="14px"; shape.style.borderRadius = p.team==="runner"?"50%":"3px";
-    shape.style.background = p.team==="runner" ? "#4db8ff" : "#ffd54d"; left.appendChild(shape);
+    const shape = document.createElement("div"); shape.style.width="14px"; shape.style.height="14px"; shape.style.borderRadius = p.team==="runner" ? "50%":"3px";
+    shape.style.background = p.team==="runner" ? "#4db8ff":"#ffd54d"; left.appendChild(shape);
     const info = document.createElement("div"); info.innerHTML = `<div style="font-weight:700">${p.name}</div><div class="small">${p.team}</div>`; left.appendChild(info);
     row.appendChild(left);
     const right = document.createElement("div"); right.style.textAlign="right";
@@ -1002,7 +1339,7 @@ function renderPlayerList(){
     right.innerHTML = `${carryText}${coords}`;
     if (adminMode){
       const kick = document.createElement("button"); kick.textContent="退出"; kick.style.background="#ff6b6b"; kick.style.border="none"; kick.style.padding="6px"; kick.style.borderRadius="6px";
-      kick.onclick = async ()=>{ if (!confirm(`${p.name} を強制退出しますか？`)) return; try { await deleteDoc(doc(db, PLAYERS_COL, p._id)); pushLog(`${p.name} を管理者が退出させました`, "event"); } catch(e){ alert("退出失敗"); } };
+      kick.onclick = async ()=>{ if (!confirm(`${p.name} を強制退出しますか？`)) return; try { await deleteDoc(doc(db, PLAYERS_COL, p._id)); log(`${p.name} を管理者が退出させました`, "event"); } catch(e){ alert("退出失敗"); } };
       right.appendChild(kick);
     }
     row.appendChild(right);
@@ -1010,170 +1347,84 @@ function renderPlayerList(){
   }
 }
 
-/* dash UI update */
-function updateDashStatusUI(){ if (!localPlayer){ dashStatusEl.textContent="ダッシュ: -"; return; } if (localPlayer.team !== "oni"){ dashStatusEl.textContent="ダッシュ: (鬼のみ)"; return; } const readyAt = localPlayer.dashReadyAt || 0; const now = Date.now(); if (now >= readyAt) dashStatusEl.textContent = "ダッシュ: 使用可能"; else dashStatusEl.textContent = `ダッシュ: 使用不可 残り ${Math.ceil((readyAt-now)/1000)}s`; }
+/* dash status & boost UI */
+function updateDashStatusUI(){
+  if (!localPlayer){ dashStatusEl.textContent = "ダッシュ: -"; return; }
+  if (localPlayer.team !== "oni"){ dashStatusEl.textContent = "ダッシュ: (鬼のみ)"; return; }
+  const readyAt = localPlayer.dashReadyAt || 0; const now = Date.now();
+  if (now >= readyAt) dashStatusEl.textContent = "ダッシュ: 使用可能"; else dashStatusEl.textContent = `ダッシュ: 使用不可 残り ${Math.ceil((readyAt-now)/1000)}s`;
+}
+function updateBoostUI(){ if (!localPlayer){ boostStatusEl.textContent = ""; return; } if (localPlayer.team === "runner"){ const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team === "runner" && Math.hypot(p.x-localPlayer.x,p.y-localPlayer.y)<=COOP_BOOST_DIST); if (nearby.length>=1){ boostStatusEl.textContent="スピードブースト中（近くに仲間）"; boostStatusEl.style.background="linear-gradient(90deg,#7fffd4,#2ee6b6)"; } else { boostStatusEl.textContent=""; boostStatusEl.style.background="linear-gradient(180deg,#06281f,#0b3940)"; } } else boostStatusEl.textContent=""; }
 
-/* boost UI */
-function updateBoostUI(){ if (!localPlayer){ boostStatusEl.textContent=""; return; } if (localPlayer.team==="runner"){ const nearby = allPlayers.filter(p=>p._id!==localPlayer._id && p.team==="runner" && Math.hypot(p.x-localPlayer.x,p.y-localPlayer.y)<=COOP_BOOST_DIST); if (nearby.length>=1){ boostStatusEl.textContent="スピードブースト中（近くに仲間）"; boostStatusEl.style.background="linear-gradient(90deg,#7fffd4,#2ee6b6)"; } else { boostStatusEl.textContent=""; boostStatusEl.style.background="linear-gradient(180deg,#06281f,#0b3940)"; } } else boostStatusEl.textContent=""; }
-
-/* UI hooks */
-toTeamBtn.addEventListener('click', ()=> showScreen("team"));
-chooseOni.addEventListener('click', ()=>{ joinedTeamChoice="oni"; showScreen("join"); });
-chooseRunner.addEventListener('click', ()=>{ joinedTeamChoice="runner"; showScreen("join"); });
-backFromTeam.addEventListener('click', ()=> showScreen("waiting"));
-backFromJoin.addEventListener('click', ()=> showScreen("team"));
-joinNow.addEventListener('click', async ()=>{ const name = (inputName.value||"").trim(); if (!name){ alert("名前を入力してください"); return; } if (!joinedTeamChoice){ alert("チームを選んでください"); return; } await joinAs(name, joinedTeamChoice); joinedTeamChoice=null; inputName.value=""; });
-leaveBtn.addEventListener('click', ()=> leave());
-adminSmall.addEventListener('click', async ()=>{ const pass = prompt("管理パスワードを入力してください:"); if (pass===ADMIN_PASS){ adminMode=true; adminResetBtn.classList.remove("hidden"); alert("管理モード有効"); renderPlayerList(); } else alert("パスワード不正"); });
-adminResetBtn.addEventListener('click', async ()=>{ if (!adminMode) return alert("管理モードが必要です"); if (!confirm("全データを削除しますか？")) return; await finalizeAndResetRound(); });
-homeResetBtn.addEventListener('click', async ()=>{ const pass = prompt("管理者パスワード:"); if (pass===ADMIN_PASS) await finalizeAndResetRound(); else alert("違います"); });
-
-/* Boot: ensure maze/walls and objects exist, then waiting screen */
-(async function boot(){
-  await ensureGame();
-  await generateMazeAndSave(); // create walls every fresh boot if none
-  // walls will be loaded by listener; but seed objects after a slight delay to ensure walls saved
-  await seedMapOnce();
-  showScreen("waiting");
-  updateStatus("待機中");
+/* ========== Bootstrap: create maze meta and seed objects, then setup listeners ========== */
+(async function bootstrap(){
+  try {
+    await ensureGame();
+    // create maze meta if missing and ensure objects
+    await createAndStoreMazeIfNeeded();
+    await seedMapOnce();
+    setupListeners();
+    showScreen("waiting");
+    updateStatus("待機中");
+  } catch(e){
+    console.error("bootstrap err", e);
+    updateStatus("初期化エラー"); log("初期化エラー: " + (e.message||e), "error");
+  }
 })();
 
-/* seedMapOnce: ensure walls & objects exist */
-async function seedMapOnce(){
-  await seedWallsIfEmpty();
-  await seedDeliveries();
-  await seedStrawberries();
+/* ========== Helper: isColliding = circleRectOverlap = defined above inline for reuse ========== */
+function circleRectOverlap(cx,cy,r,rect){
+  const rx = Math.max(rect.x, Math.min(cx, rect.x+rect.w));
+  const ry = Math.max(rect.y, Math.min(cy, rect.y+rect.h));
+  const dx = cx - rx, dy = cy - ry;
+  return (dx*dx + dy*dy) <= (r*r);
 }
 
-/* periodic check/win etc. */
+/* ========== Periodic housekeeping: ensure objects not inside walls; win-check ========== */
 setInterval(async ()=>{
   try {
+    // ensure strawberries/deliveries not overlapping walls
+    for (const s of strawberries){
+      if (pointInsideWall(s.x,s.y)){
+        const safe = findNearestFreePos(s.x,s.y);
+        try { await updateDoc(doc(db, STRAWBERRIES_COL, s._id), { x: safe.x, y: safe.y, ownerId: null, available: true, placedAtDelivery: null }); } catch(e){}
+      }
+    }
+    for (const d of deliveries){
+      if (pointInsideWall(d.x,d.y)){
+        const safe = findNearestFreePos(d.x,d.y);
+        try { await updateDoc(doc(db, DELIVERIES_COL, d._id), { x: safe.x, y: safe.y, occupied: false, strawberryId: null }); } catch(e){}
+      }
+    }
+    // win-check by scores
     const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
     const gSnap = await getDoc(gRef);
     if (!gSnap.exists()) return;
     const g = gSnap.data();
     const scores = g.scores || { oni:0, runner:0 };
     if (g.state === "playing" && (scores.oni >= WIN_SCORE || scores.runner >= WIN_SCORE)){
-      pushLog("スコア到達でラウンド終了", "event");
+      log("スコア到達によりラウンドを終了します", "event");
       await setDoc(gRef, { ...g, state: "ended" });
       await finalizeAndResetRound();
     }
-  } catch(e){}
-}, 3000);
+  } catch(e){ console.error("housekeeping err", e); }
+}, 4000);
 
-/* frequent responsiveness tasks */
-setInterval(async ()=>{ for (const s of strawberries) attemptCollectStraw(s); await checkCapturesAndHandle(); }, 1200);
+/* ========== Notes =====================================================
+- This file aims to be robust: many operations are guarded with try/catch and
+  transaction fallbacks. Maze generation and object seeding ensure items and
+  players are never placed inside walls.
+- SHIFT pickup uses a transaction-first approach and a forced fallback so that
+  pressing SHIFT near a strawberry will pick it up in virtually all conditions.
+- Movement resolves collisions by attempting slides and shrinking steps to
+  avoid getting stuck inside walls.
+- BGM (bgm.mp3) plays on join; browser autoplay policies typically permit
+  playback after user interaction (join button).
+- Tune constants at the top: FOOTSTEP_RANGE_MULT, DASH_MULT, GLOBAL_SPEED_MULT,
+  MAZE_COLS/ROWS (and CELL_SIZE derived) to change difficulty and scale.
+- Security: Firestore rules are not included — set proper rules before public use.
+======================================================================= */
 
-/* Utility: seedDeliveries + seedStrawberries (called earlier) */
-async function seedDeliveries(){
-  const dSnap = await getDocs(collection(db, DELIVERIES_COL));
-  if (dSnap.size === 0){
-    const pts = [
-      { x: 80, y: 80, occupied:false, strawberryId:null },
-      { x: MAP_SIZE-80, y: 80, occupied:false, strawberryId:null },
-      { x: 80, y: MAP_SIZE-80, occupied:false, strawberryId:null },
-      { x: MAP_SIZE-80, y: MAP_SIZE-80, occupied:false, strawberryId:null }
-    ];
-    for (const p of pts){
-      if (pointInWalls(p.x,p.y,12)){ const np = randomPassagePosition(); p.x=np.x; p.y=np.y; }
-      await addDoc(collection(db, DELIVERIES_COL), p);
-    }
-  } else {
-    for (const d of dSnap.docs){
-      const data = d.data();
-      if (pointInWalls(data.x,data.y,12)){ const np = randomPassagePosition(); await updateDoc(doc(db, DELIVERIES_COL, d.id), { x:np.x, y:np.y, occupied:false, strawberryId:null }); }
-    }
-  }
-}
-async function seedStrawberries(){
-  const sSnap = await getDocs(collection(db, STRAWBERRIES_COL));
-  if (sSnap.size === 0){
-    for (let i=0;i<4;i++){ const pos = randomPassagePosition(); await addDoc(collection(db, STRAWBERRIES_COL), { x:pos.x, y:pos.y, available:true, ownerId:null, placedAtDelivery:null }); }
-  } else {
-    if (sSnap.size < 4){ for (let i=sSnap.size;i<4;i++){ const pos=randomPassagePosition(); await addDoc(collection(db, STRAWBERRIES_COL), { x:pos.x, y:pos.y, available:true, ownerId:null, placedAtDelivery:null }); } }
-    else {
-      for (const d of sSnap.docs){ const s = d.data(); if (pointInWalls(s.x,s.y,12) || (s.ownerId && !allPlayers.find(p=>p._id===s.ownerId))){ const np=randomPassagePosition(); await updateDoc(doc(db, STRAWBERRIES_COL, d.id), { x:np.x, y:np.y, available:true, ownerId:null, placedAtDelivery:null }); } }
-    }
-  }
-}
-
-/* render functions (drawWorld, drawMiniMap) - sprites if loaded */
-function drawTextBubble(ctx, text, x, y, bg="#000", small=false){
-  ctx.save(); ctx.font = (small ? "12px sans-serif" : "13px sans-serif");
-  const metrics = ctx.measureText(text); const padX = 8; const w = metrics.width + padX*2; const h=18; const bx = x - w/2, by = y - h/2;
-  ctx.fillStyle = bg; const r=8; ctx.beginPath(); ctx.moveTo(bx+r,by); ctx.arcTo(bx+w,by,bx+w,by+h,r); ctx.arcTo(bx+w,by+h,bx,by+h,r); ctx.arcTo(bx,by+h,bx,by,r); ctx.arcTo(bx,by,bx+w,by,r); ctx.closePath(); ctx.fill();
-  ctx.fillStyle="#fff"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(text,x,y); ctx.restore();
-}
-function drawDirectionHint(ctx, target, self, width, height){
-  const dx = target.x - self.x, dy = target.y - self.y; const angle = Math.atan2(dy, dx);
-  const cx = width/2, cy = height/2; const edgeX = cx + Math.cos(angle)*(Math.min(width,height)/2 - 30), edgeY = cy + Math.sin(angle)*(Math.min(width,height)/2 - 30);
-  ctx.save(); ctx.translate(edgeX, edgeY); ctx.rotate(angle); ctx.fillStyle="#ff8"; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-10,-6); ctx.lineTo(-10,6); ctx.closePath(); ctx.fill();
-  const dist = Math.round(Math.hypot(dx,dy)); drawTextBubble(ctx, `${target.name} (${dist}m)`, edgeX+18, edgeY, "#222", true); ctx.restore();
-}
-function drawWorld(ctx, width, height, centerPlayer, applyVisibility){
-  ctx.clearRect(0,0,width,height);
-  let targetX = centerPlayer ? centerPlayer.x : MAP_SIZE/2, targetY = centerPlayer ? centerPlayer.y : MAP_SIZE/2;
-  const halfW = width/2, halfH = height/2;
-  targetX = clamp(targetX, halfW, MAP_SIZE-halfW); targetY = clamp(targetY, halfH, MAP_SIZE-halfH);
-  camera.x += (targetX - camera.x) * camera.lerp; camera.y += (targetY - camera.y) * camera.lerp;
-  const toScreenX = mx => mx - (camera.x - halfW), toScreenY = my => my - (camera.y - halfH);
-  if (mapImageLoaded){ const sx = width / MAP_SIZE, sy = height / MAP_SIZE; ctx.drawImage(mapImage, (-(camera.x - halfW))*sx, (-(camera.y - halfH))*sy, MAP_SIZE*sx, MAP_SIZE*sy); } else { ctx.fillStyle="#081018"; ctx.fillRect(0,0,width,height); }
-  // draw walls (visualize for debugging; style subtle)
-  ctx.fillStyle = "rgba(40,40,40,0.9)";
-  for (const w of walls){ const x = toScreenX(w.x), y=toScreenY(w.y); ctx.fillRect(x, y, w.w, w.h); }
-  // deliveries
-  for (const d of deliveries){ const sx = toScreenX(d.x), sy = toScreenY(d.y); const label = d.occupied ? "△ (設置済)" : "△ 納品所"; const color = d.occupied ? "#8be08b" : "#ffd39a"; drawTextBubble(ctx, label, sx, sy-26, color); if (spriteDeliveryLoaded) ctx.drawImage(spriteDelivery, sx-16, sy-16, 32,32); }
-  // strawberries
-  for (const s of strawberries){ const sx = toScreenX(s.x), sy = toScreenY(s.y); let visible = true; if (applyVisibility && centerPlayer && centerPlayer.team === "runner") visible = Math.hypot(centerPlayer.x - s.x, centerPlayer.y - s.y) <= VISIBILITY_RADIUS; if (!visible) continue; drawTextBubble(ctx, "・ イチゴ", sx, sy-26, "#ff6b8a"); if (spriteStrawLoaded) ctx.drawImage(spriteStraw, sx-10, sy-10, 20,20); else { ctx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f"; ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI*2); ctx.fill(); } const runnersNear = allPlayers.filter(p=>p.team==="runner" && Math.hypot(p.x - s.x, p.y - s.y) <= PICKUP_RADIUS); if (runnersNear.length===1){ ctx.strokeStyle="rgba(255,255,128,0.9)"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sx,sy,12,0,Math.PI*2); ctx.stroke(); ctx.lineWidth=1; } }
-  // players
-  for (const p of allPlayers){
-    let visible = true;
-    if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){
-      if (p._id === centerPlayer._id) visible = true; else visible = (Math.hypot(centerPlayer.x - p.x, centerPlayer.y - p.y) <= VISIBILITY_RADIUS);
-    }
-    if (!visible) continue;
-    const sx = toScreenX(p.x), sy = toScreenY(p.y);
-    if (p.team==="runner"){ if (spriteRunnerLoaded) ctx.drawImage(spriteRunner, sx-14, sy-14, 28,28); else { ctx.fillStyle="#4db8ff"; ctx.beginPath(); ctx.arc(sx,sy,12,0,Math.PI*2); ctx.fill(); } }
-    else { if (spriteOniLoaded) ctx.drawImage(spriteOni, sx-14, sy-14, 28,28); else { ctx.fillStyle="#ffcf4d"; ctx.fillRect(sx-12,sy-12,24,24); } }
-    if (localPlayer && p._id === localPlayer._id){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; if (p.team==="runner"){ ctx.beginPath(); ctx.arc(sx,sy,15,0,Math.PI*2); ctx.stroke(); } else ctx.strokeRect(sx-14,sy-14,28,28); ctx.lineWidth=1; }
-    if (p.team==="runner"){ const posText = p.carryingStraw ? "運搬中" : ""; if (posText) drawTextBubble(ctx, posText, sx, sy-36, "#2b6b2b"); }
-    drawTextBubble(ctx, p.name, sx, sy+20, "#000", true);
-  }
-  // darkness
-  if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ ctx.save(); ctx.fillStyle="rgba(0,0,0,0.6)"; ctx.beginPath(); ctx.rect(0,0,width,height); ctx.arc(width/2, height/2, VISIBILITY_RADIUS, 0, Math.PI*2, true); try{ ctx.fill('evenodd'); }catch(e){ ctx.globalCompositeOperation='destination-out'; ctx.fill(); ctx.globalCompositeOperation='source-over'; } ctx.restore(); }
-  // teammate hint
-  if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ const others = allPlayers.filter(p=>p.team==="runner"&&p._id!==centerPlayer._id); if (others.length>0){ others.sort((a,b)=>Math.hypot(a.x-centerPlayer.x,a.y-centerPlayer.y)-Math.hypot(b.x-centerPlayer.x,b.y-centerPlayer.y)); drawDirectionHint(gctx, others[0], centerPlayer, width, height); } }
-}
-
-/* minimap */
-function drawMiniMap(){ miniCtx.clearRect(0,0,miniMap.width,miniMap.height); const w = miniMap.width, h = miniMap.height; miniCtx.fillStyle="#041218"; miniCtx.fillRect(0,0,w,h); if (mapImageLoaded) miniCtx.drawImage(mapImage,0,0,w,h); for (const d of deliveries){ const sx=d.x/MAP_SIZE*w, sy=d.y/MAP_SIZE*h; const color = d.occupied ? "#8be08b" : "#ffd39a"; miniCtx.fillStyle=color; miniCtx.beginPath(); miniCtx.moveTo(sx,sy-6); miniCtx.lineTo(sx-6,sy+6); miniCtx.lineTo(sx+6,sy+6); miniCtx.closePath(); miniCtx.fill(); } for (const s of strawberries){ const sx=s.x/MAP_SIZE*w, sy=s.y/MAP_SIZE*h; miniCtx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f"; miniCtx.beginPath(); miniCtx.arc(sx,sy,3,0,Math.PI*2); miniCtx.fill(); } for (const p of allPlayers){ const sx=p.x/MAP_SIZE*w, sy=p.y/MAP_SIZE*h; miniCtx.fillStyle = p.team==="oni" ? "#ffcf4d" : "#4db8ff"; miniCtx.beginPath(); miniCtx.arc(sx,sy,3,0,Math.PI*2); miniCtx.fill(); } miniCtx.strokeStyle="rgba(255,255,255,0.06)"; miniCtx.strokeRect(0,0,w,h); }
-
-/* render loop */
-function renderLoop(){ requestAnimationFrame(renderLoop); drawWorld(gctx, gameCanvas.width, gameCanvas.height, localPlayer, true); drawMiniMap(); updateDashStatusUI(); updateBoostUI(); }
-renderLoop();
-
-/* update UI functions */
-function updateDashStatusUI(){ if (!localPlayer){ dashStatusEl.textContent="ダッシュ: -"; return; } if (localPlayer.team !== "oni"){ dashStatusEl.textContent="ダッシュ: (鬼のみ)"; return; } const readyAt = localPlayer.dashReadyAt || 0; const now = Date.now(); if (now >= readyAt) dashStatusEl.textContent = "ダッシュ: 使用可能"; else dashStatusEl.textContent = `ダッシュ: 使用不可 残り ${Math.ceil((readyAt-now)/1000)}s`; }
-function updateBoostUI(){ if (!localPlayer){ boostStatusEl.textContent=""; return; } if (localPlayer.team==="runner"){ const nearby = allPlayers.filter(p=>p._id!==localPlayer._id && p.team==="runner" && Math.hypot(p.x-localPlayer.x,p.y-localPlayer.y)<=COOP_BOOST_DIST); if (nearby.length>=1){ boostStatusEl.textContent = "スピードブースト中（近くに仲間）"; boostStatusEl.style.background="linear-gradient(90deg,#7fffd4,#2ee6b6)"; } else { boostStatusEl.textContent=""; boostStatusEl.style.background="linear-gradient(180deg,#06281f,#0b3940)"; } } else boostStatusEl.textContent=""; }
-
-/* render player list (no numeric 🍓) */
-function renderPlayerList(){ playerListEl.innerHTML=""; const sorted = allPlayers.slice().sort((a,b)=> a.team.localeCompare(b.team) || (a.name||"").localeCompare(b.name)); for (const p of sorted){ const row=document.createElement("div"); row.className="playerRow"; const left=document.createElement("div"); left.style.display="flex"; left.style.gap="8px"; left.style.alignItems="center"; const shape=document.createElement("div"); shape.style.width="14px"; shape.style.height="14px"; shape.style.borderRadius = p.team==="runner" ? "50%" : "3px"; shape.style.background = p.team==="runner" ? "#4db8ff" : "#ffd54d"; left.appendChild(shape); const info=document.createElement("div"); info.innerHTML=`<div style="font-weight:700">${p.name}</div><div class="small">${p.team}</div>`; left.appendChild(info); row.appendChild(left); const right=document.createElement("div"); right.style.textAlign="right"; const coords = adminMode ? `<div class="small">${Math.round(p.x)},${Math.round(p.y)}</div>` : ""; const carryText = p.carryingStraw ? `<div style="font-weight:700">運搬中</div>` : ""; right.innerHTML = `${carryText}${coords}`; if (adminMode){ const kick=document.createElement("button"); kick.textContent="退出"; kick.style.background="#ff6b6b"; kick.style.border="none"; kick.style.padding="6px"; kick.style.borderRadius="6px"; kick.onclick=async ()=>{ if (!confirm(`${p.name} を強制退出しますか？`)) return; try{ await deleteDoc(doc(db, PLAYERS_COL, p._id)); pushLog(`${p.name} を管理者が退出させました`, "event"); }catch(e){ alert("退出失敗"); } }; right.appendChild(kick); } row.appendChild(right); playerListEl.appendChild(row); } }
-
-/* UI hooks */
-toTeamBtn.addEventListener('click', ()=> showScreen("team"));
-chooseOni.addEventListener('click', ()=>{ joinedTeamChoice="oni"; showScreen("join"); });
-chooseRunner.addEventListener('click', ()=>{ joinedTeamChoice="runner"; showScreen("join"); });
-backFromTeam.addEventListener('click', ()=> showScreen("waiting"));
-backFromJoin.addEventListener('click', ()=> showScreen("team"));
-joinNow.addEventListener('click', async ()=>{ const name=(inputName.value||"").trim(); if (!name){ alert("名前を入力してください"); return; } if (!joinedTeamChoice){ alert("チームを選んでください"); return; } await joinAs(name, joinedTeamChoice); joinedTeamChoice=null; inputName.value=""; });
-leaveBtn.addEventListener('click', ()=> leave());
-adminSmall.addEventListener('click', async ()=>{ const pass = prompt("管理パスワードを入力してください:"); if (pass===ADMIN_PASS){ adminMode=true; adminResetBtn.classList.remove("hidden"); alert("管理モード有効"); renderPlayerList(); } else alert("パスワード不正"); });
-adminResetBtn.addEventListener('click', async ()=>{ if (!adminMode) return alert("管理モードが必要"); if (!confirm("全データを削除しますか？")) return; await finalizeAndResetRound(); });
-homeResetBtn.addEventListener('click', async ()=>{ const pass = prompt("管理者パスワード:"); if (pass===ADMIN_PASS) await finalizeAndResetRound(); else alert("違います"); });
-
-/* Utility finalizeAndResetRound earlier used */
-
-/* End of module */
 </script>
 </body>
 </html>
