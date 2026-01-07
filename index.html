@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>おにごっこ</title>
+<title>マルチプレイ基盤 - 完全版（Carry / BGM / Footstep設定）</title>
 <style>
   :root{ --bg:#0d0f12; --panel:#111317; --muted:#9aa3ad; }
   *{box-sizing:border-box}
@@ -116,7 +116,7 @@
         <div class="small" id="statusSmall">状態: 初期</div>
       </div>
       <div style="margin-top:8px">
-        <canvas id="miniMap" class="minimap"></canvas>
+        <canvas id="miniMap" class="minimap" width="360" height="140"></canvas>
         <div class="small">map.png を置くと背景に反映されます。</div>
       </div>
     </div>
@@ -132,21 +132,18 @@
 
 <script type="module">
 /* =============================
-  最終反映版（Carry 改良 / Footstep 設定 / BGM）
-  - 足音範囲は FOOTSTEP_RANGE_MULT を変えるだけで調整できます
-  - 🍓数は全表示を消しました（運搬中は「運搬中」バブルで表示）
-  - Shift の hold => carry、keyup => place（離すで設置）。運搬中に鬼が近づいたら自動設置（置いたら再度Shiftで運べる）
-  - BGM (bgm.mp3) をゲーム画面で再生（参加操作で再生開始）
+  修正版：重複宣言の削除・安定化（pickupNearestStrawbyForce 等は定義しない）
+  オリジナル機能は維持しています（Carry: Shiftで掴んで放すで設置 / BGM / 足音）
   ============================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-analytics.js";
 import {
   getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDoc,
-  onSnapshot, getDocs, runTransaction, writeBatch, serverTimestamp, Timestamp
+  onSnapshot, getDocs, runTransaction, writeBatch, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
-/* ====== Firebase config (user provided) ====== */
+/* ====== Firebase config (必要ならご自身の値に書き換えてください) ====== */
 const firebaseConfig = {
   apiKey: "AIzaSyBmgtx4FW_3_0zy1MvAvZLPHmE_CE1txuE",
   authDomain: "zzke-ki1.firebaseapp.com",
@@ -176,38 +173,25 @@ const CAPTURE_RADIUS = 36;
 const POSITION_THROTTLE_MS = 180;
 const WIN_SCORE = 50;
 
-/* Base speeds (and global multiplier previously requested are already applied earlier).
-   Now per request, multiply all speeds by 1.5 (we apply by setting RUNNER_SPEED/ONI_SPEED here).
-*/
+/* speed multipliers */
 const GLOBAL_SPEED_MULT = 1.5;
 const BASE_RUNNER_SPEED = 2.6;
 const BASE_ONI_SPEED = 2.4;
 let RUNNER_SPEED = BASE_RUNNER_SPEED * GLOBAL_SPEED_MULT;
 let ONI_SPEED = BASE_ONI_SPEED * GLOBAL_SPEED_MULT;
 
-/* Dash multiplier: requested "さらに3倍" -> apply additional factor.
-   Set DASH_MULT to a high multiplier (tunable). */
-let DASH_MULT = 9.0; // you can reduce this if too fast
+let DASH_MULT = 9.0;
 const DASH_DUR_MS = 3000;
 const DASH_CT_MS = 10000;
 
-/* Carry speed multiplier */
 const CARRY_SPEED_MULT = 0.4;
-
-/* Coop boost */
 const COOP_BOOST_DIST = 120;
 const COOP_SPEED_MULT = 1.3;
-
-/* Footstep audible range multiplier: configurable here */
-let FOOTSTEP_RANGE_MULT = 5; // change this value to widen/narrow audible range
-
-/* strawberry respawn immediate teleport */
+let FOOTSTEP_RANGE_MULT = 5;
 const STRAW_RESPAWN_IMMEDIATE = true;
 
-/* admin password */
 const ADMIN_PASS = "1122";
 
-/* asset filenames */
 const ASSETS = {
   map: "map.png",
   runner: "runner.png",
@@ -266,11 +250,10 @@ const dashStatusEl = document.getElementById("dashStatus");
 const waitOniCount = document.getElementById("waitOniCount");
 const waitRunnerCount = document.getElementById("waitRunnerCount");
 
-/* audio */
 const asiotoAudio = document.getElementById("asioto");
 const explosionAudio = document.getElementById("explosion");
 
-/* unsub */
+/* unsub handles */
 let unsubGame = null, unsubPlayers = null, unsubStraw = null, unsubDeliveries = null;
 
 /* map and sprites */
@@ -286,7 +269,7 @@ spriteOni.src = ASSETS.oni; spriteOni.onload = () => spriteOniLoaded = true;
 spriteDelivery.src = ASSETS.delivery; spriteDelivery.onload = () => spriteDeliveryLoaded = true;
 spriteStraw.src = ASSETS.strawberry; spriteStraw.onload = () => spriteStrawLoaded = true;
 
-/* camera smoothing */
+/* camera */
 const camera = { x: MAP_SIZE/2, y: MAP_SIZE/2, lerp: 0.18 };
 
 /* helpers */
@@ -305,7 +288,7 @@ function nowMillis(){ return Date.now(); }
 function showLoading(on){ loadingOverlay.style.display = on ? "flex" : "none"; }
 function updateStatus(s){ statusSmall.textContent = "状態: " + s; }
 
-/* log with 10s auto-remove */
+/* log */
 function pushLog(text, type="info"){
   const el = document.createElement("div");
   el.className = "logItem " + (type==="event"?"log-event":(type==="error"?"log-error":"log-info"));
@@ -352,12 +335,12 @@ async function seedMapOnce(){
   }
 }
 
-/* JOIN stable flow */
+/* JOIN flow */
 async function joinAs(name, team){
   showLoading(true);
   await ensureGame();
   try {
-    // remove same-name old
+    // remove same-name old sessions (best-effort)
     try {
       const snaps = await getDocs(collection(db, PLAYERS_COL));
       for (const d of snaps.docs){
@@ -366,29 +349,31 @@ async function joinAs(name, team){
           try { await deleteDoc(d.ref); pushLog(`古いセッション(${name})を削除`, "info"); } catch(e){}
         }
       }
-    } catch(e){}
+    } catch(e){ console.warn(e); }
     const pRef = await addDoc(collection(db, PLAYERS_COL), {
       name: name || "Player", team, x: randPosCentral().x, y: randPosCentral().y,
       possession: 0, lastAction: serverTimestamp(), dashReadyAt: 0, carryingStraw: null
     });
     sessionId = pRef.id;
     setupListeners();
+    // await reflection
     const start = Date.now(); let ok=false;
     while(Date.now()-start < 5000){
       if (allPlayers.find(p => p._id === sessionId)){ ok=true; break; }
       await new Promise(r => setTimeout(r,150));
     }
     if (!ok) pushLog("参加反映遅延がありますが続行します", "error");
+    // try to set game state to playing if waiting
     try {
       await runTransaction(db, async (t) => {
         const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
         const s = await t.get(gRef);
-        if (!s.exists()) throw new Error("game missing");
+        if (!s.exists()) return;
         const g = s.data();
         if (g.state === "waiting") t.update(gRef, { state: "playing" });
       });
-    } catch(e){}
-    // start bgm if allowed (user interaction occurred)
+    } catch(e){ console.warn(e); }
+    // start bgm (user interaction)
     try { bgmAudio.currentTime = 0; bgmAudio.play().catch(()=>{}); } catch(e){}
     showLoading(false);
     showScreen("game");
@@ -397,6 +382,7 @@ async function joinAs(name, team){
   } catch(e){
     showLoading(false);
     pushLog("参加失敗: "+(e.message||e), "error");
+    console.error(e);
     alert("参加に失敗しました。コンソールを確認してください。");
   }
 }
@@ -404,7 +390,7 @@ async function joinAs(name, team){
 /* LEAVE */
 async function leave(){
   if (!sessionId) return;
-  try { await deleteDoc(doc(db, PLAYERS_COL, sessionId)); } catch(e){}
+  try { await deleteDoc(doc(db, PLAYERS_COL, sessionId)); } catch(e){ console.warn(e); }
   sessionId = null; localPlayer = null;
   tearDownListeners();
   showScreen("waiting");
@@ -476,8 +462,8 @@ function tearDownListeners(){
 /* FINALIZE & RESET */
 async function finalizeAndResetRound(){
   try {
-    async function delAll(col){
-      const snaps = await getDocs(collection(db, col));
+    async function delAll(colName){
+      const snaps = await getDocs(collection(db, colName));
       const batch = writeBatch(db);
       for (const d of snaps.docs) batch.delete(d.ref);
       if (snaps.size) await batch.commit();
@@ -496,7 +482,7 @@ async function finalizeAndResetRound(){
 async function tryStartCarryIfNear(){
   if (!localPlayer || !sessionId) return;
   if (localPlayer.team !== "runner") return;
-  if (localPlayer.carryingStraw) return; // already carrying
+  if (localPlayer.carryingStraw) return;
   for (const s of strawberries){
     if (!s.available || s.ownerId) continue;
     const d = Math.hypot(localPlayer.x - s.x, localPlayer.y - s.y);
@@ -505,7 +491,7 @@ async function tryStartCarryIfNear(){
         await updateDoc(doc(db, STRAWBERRIES_COL, s._id), { ownerId: sessionId, available: false });
         await updateDoc(doc(db, PLAYERS_COL, sessionId), { carryingStraw: s._id, lastAction: serverTimestamp() });
         pushLog(`${localPlayer.name} がイチゴを掴みました`, "event");
-      } catch(e){}
+      } catch(e){ console.warn(e); }
       return;
     }
   }
@@ -514,21 +500,16 @@ async function tryStartCarryIfNear(){
 async function releaseCarryById(strawId){
   if (!strawId) return;
   try {
-    // set ownerId null and available true at current strawberry pos
     const sRef = doc(db, STRAWBERRIES_COL, strawId);
     const sSnap = await getDoc(sRef);
     if (!sSnap.exists()) return;
-    const sData = sSnap.data();
-    // place at current position (already being updated by carrier)
+    // leave strawberry where it currently is but mark available
     await updateDoc(sRef, { ownerId: null, available: true });
-    // clear player's carryingStraw if still set
-    const pRef = doc(db, PLAYERS_COL, sessionId);
-    try { await updateDoc(pRef, { carryingStraw: null, lastAction: serverTimestamp() }); } catch(e){}
+    try { await updateDoc(doc(db, PLAYERS_COL, sessionId), { carryingStraw: null, lastAction: serverTimestamp() }); } catch(e){}
     pushLog(`イチゴを設置しました`, "info");
-  } catch(e){}
+  } catch(e){ console.warn(e); }
 }
 
-/* If carrier's strawberry is on a delivery, mark it placed */
 async function checkPlacedOnDelivery(straw){
   if (!straw || !straw.ownerId) return;
   for (const d of deliveries){
@@ -553,13 +534,12 @@ async function checkPlacedOnDelivery(straw){
           }
         });
         pushLog(`イチゴが納品所に設置されました`, "event");
-      } catch(e){}
+      } catch(e){ console.warn(e); }
       return;
     }
   }
 }
 
-/* attemptCollectStraw: existing auto-collection logic (keeps previous behavior) */
 async function attemptCollectStraw(straw){
   if (!straw || !straw.available || straw.ownerId) return;
   const nearby = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - straw.x, p.y - straw.y) <= PICKUP_RADIUS);
@@ -584,13 +564,11 @@ async function attemptCollectStraw(straw){
       if (STRAW_RESPAWN_IMMEDIATE){
         try { const newPos = randPosCentral(); await updateDoc(doc(db, STRAWBERRIES_COL, straw._id), { x: newPos.x, y: newPos.y, available: true, ownerId: null, placedAtDelivery: null }); } catch(e){}
       }
-    } catch(e){}
-  } else {
-    // boosted pair special check omitted here (already handled earlier versions)
+    } catch(e){ console.warn(e); }
   }
 }
 
-/* capture detection: oni captures runner -> possession 0 and respawn, add +5 to oni score */
+/* capture detection */
 async function checkCapturesAndHandle(){
   const onis = allPlayers.filter(p => p.team === "oni");
   const runners = allPlayers.filter(p => p.team === "runner");
@@ -647,10 +625,10 @@ async function startDash(){
     await updateDoc(doc(db, PLAYERS_COL, sessionId), { dashReadyAt: now + DASH_CT_MS });
     localPlayer._isDashingUntil = now + DASH_DUR_MS;
     setTimeout(()=>{ if (localPlayer) localPlayer._isDashingUntil = 0; }, DASH_DUR_MS);
-  } catch(e){}
+  } catch(e){ console.warn(e); }
 }
 
-/* drawing helper & rendering (camera lerp avoids stuck viewport) */
+/* drawing helper & rendering */
 function drawTextBubble(ctx, text, x, y, bg="#000", small=false){
   ctx.save();
   ctx.font = (small ? "12px sans-serif" : "13px sans-serif");
@@ -688,7 +666,7 @@ function drawDirectionHint(ctx, target, self, width, height){
   ctx.restore();
 }
 
-/* draw world & mini map (sprites used if available) */
+/* draw world & mini map */
 function drawWorld(ctx, width, height, centerPlayer, applyVisibility){
   ctx.clearRect(0,0,width,height);
   let targetX = centerPlayer ? centerPlayer.x : MAP_SIZE/2;
@@ -732,7 +710,7 @@ function drawWorld(ctx, width, height, centerPlayer, applyVisibility){
     if (runnersNear.length === 1){ ctx.strokeStyle="rgba(255,255,128,0.9)"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sx, sy, 12,0,Math.PI*2); ctx.stroke(); ctx.lineWidth=1; }
   }
 
-  // players (note: possession numbers hidden; show only "運搬中" if carrying)
+  // players
   for (const p of allPlayers){
     let visible = true;
     if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
@@ -744,7 +722,7 @@ function drawWorld(ctx, width, height, centerPlayer, applyVisibility){
     else { if (spriteOniLoaded) ctx.drawImage(spriteOni, sx-14, sy-14, 28,28); else { ctx.fillStyle="#ffcf4d"; ctx.fillRect(sx-12,sy-12,24,24); } }
     if (localPlayer && p._id === localPlayer._id){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; if (p.team==="runner"){ctx.beginPath();ctx.arc(sx,sy,15,0,Math.PI*2);ctx.stroke();}else ctx.strokeRect(sx-14,sy-14,28,28); ctx.lineWidth=1; }
     if (p.team === "runner"){
-      const posText = p.carryingStraw ? "運搬中" : ""; // do not show numeric 🍓
+      const posText = p.carryingStraw ? "運搬中" : "";
       if (posText) drawTextBubble(ctx, posText, sx, sy - 36, "#2b6b2b");
     }
     drawTextBubble(ctx, p.name, sx, sy + 20, "#000", true);
@@ -763,7 +741,7 @@ function drawWorld(ctx, width, height, centerPlayer, applyVisibility){
   }
 }
 
-/* minimap sync */
+/* minimap */
 function drawMiniMap(){
   miniCtx.clearRect(0,0,miniMap.width,miniMap.height);
   const w = miniMap.width, h = miniMap.height;
@@ -779,46 +757,35 @@ function drawMiniMap(){
 function renderLoop(){ requestAnimationFrame(renderLoop); drawWorld(gctx, gameCanvas.width, gameCanvas.height, localPlayer, true); drawMiniMap(); updateDashStatusUI(); updateBoostUI(); }
 renderLoop();
 
-/* Input handling: robust (fix long-press bug) */
+/* Input handling */
 const pressed = new Set(); let lastKeyEventTime = Date.now();
 window.addEventListener('keydown', (e)=>{
   const k = e.key.toLowerCase();
   if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){ e.preventDefault(); lastKeyEventTime = Date.now(); pressed.add(k);
-    // SHIFT keydown handling: if shift pressed and player not carrying -> try pickup; if carrying -> place immediately (toggle)
     if (k === "shift" && localPlayer && localPlayer.team === "runner" && sessionId){
       if (!localPlayer.carryingStraw) { tryStartCarryIfNear(); }
-      else { // carrying -> place immediately (press again behavior)
-        const strawId = localPlayer.carryingStraw;
-        if (strawId) releaseCarryById(strawId);
-      }
+      else { const strawId = localPlayer.carryingStraw; if (strawId) releaseCarryById(strawId); }
     }
   }
 });
 window.addEventListener('keyup', (e)=>{
   const k = e.key.toLowerCase();
   if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){ e.preventDefault(); lastKeyEventTime = Date.now(); pressed.delete(k);
-    // SHIFT release: if player carrying -> place (hold to carry, release to place)
     if (k === "shift" && localPlayer && localPlayer.team === "runner" && sessionId){
-      if (localPlayer.carryingStraw) {
-        const strawId = localPlayer.carryingStraw;
-        if (strawId) releaseCarryById(strawId);
-      }
+      if (localPlayer.carryingStraw) { const strawId = localPlayer.carryingStraw; if (strawId) releaseCarryById(strawId); }
     }
   }
 });
 window.addEventListener('blur', ()=>{ pressed.clear(); });
 setInterval(()=>{ if (Date.now() - lastKeyEventTime > 1000) pressed.clear(); }, 1200);
 
-/* movement tick: apply speeds, dash, carry reduction, coop boost; update carried strawberry position if any; auto-drop if oni near */
+/* movement tick */
 setInterval(async ()=>{
   if (!localPlayer || !sessionId) return;
   let sp = localPlayer.team === "oni" ? ONI_SPEED : RUNNER_SPEED;
-  // dash trigger for oni
   if (localPlayer.team === "oni" && (pressed.has("shift")) && canDash(localPlayer)) await startDash();
   if (localPlayer._isDashingUntil && Date.now() < localPlayer._isDashingUntil) sp *= DASH_MULT;
-  // carry reduction
   if (localPlayer.carryingStraw) sp *= CARRY_SPEED_MULT;
-  // coop boost
   if (localPlayer.team === "runner"){
     const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team === "runner" && Math.hypot(p.x - localPlayer.x, p.y - localPlayer.y) <= COOP_BOOST_DIST);
     if (nearby.length >= 1) sp *= COOP_SPEED_MULT;
@@ -830,7 +797,6 @@ setInterval(async ()=>{
   if (pressed.has("w") || pressed.has("arrowup")) dy -= 1;
   if (pressed.has("s") || pressed.has("arrowdown")) dy += 1;
   if (dx===0 && dy===0){
-    // still update strawberry follow position if carrying (throttled by pos update)
     if (localPlayer.carryingStraw){
       try { await updateDoc(doc(db, STRAWBERRIES_COL, localPlayer.carryingStraw), { x: localPlayer.x, y: localPlayer.y }); } catch(e){}
     }
@@ -841,17 +807,14 @@ setInterval(async ()=>{
   localPlayer.x = nx; localPlayer.y = ny;
   await sendPositionIfNeeded(nx, ny);
 
-  // update carried strawberry position to follow player
   if (localPlayer.carryingStraw){
     try { await updateDoc(doc(db, STRAWBERRIES_COL, localPlayer.carryingStraw), { x: nx, y: ny, ownerId: sessionId }); } catch(e){}
-    // auto place if near delivery
     const straw = strawberries.find(s => s._id === localPlayer.carryingStraw);
     if (straw) await checkPlacedOnDelivery(straw);
-    // auto-drop if any oni close to the carrier (safety radius)
     const onis = allPlayers.filter(p => p.team === "oni");
     for (const o of onis){
       const d = Math.hypot(o.x - localPlayer.x, o.y - localPlayer.y);
-      if (d <= CAPTURE_RADIUS * 1.2){ // if oni near, force place
+      if (d <= CAPTURE_RADIUS * 1.2){
         const strawId = localPlayer.carryingStraw;
         if (strawId) {
           await releaseCarryById(strawId);
@@ -861,20 +824,16 @@ setInterval(async ()=>{
       }
     }
   } else {
-    // not carrying: if shift is down try start (in some cases)
     if (pressed.has("shift")) {
-      // attempt start (throttled)
-      // handled on keydown, but keep as fallback
       await tryStartCarryIfNear();
     }
   }
 
-  await tryDeliver(localPlayer);
   for (const s of strawberries) attemptCollectStraw(s);
   await checkCapturesAndHandle();
 }, 100);
 
-/* footstep: runners hear if any oni within VISIBILITY_RADIUS * FOOTSTEP_RANGE_MULT */
+/* footstep */
 setInterval(()=>{
   if (!localPlayer) return;
   if (localPlayer.team === "runner"){
@@ -889,7 +848,7 @@ setInterval(()=>{
   }
 }, 900);
 
-/* player list rendering: hide numeric 🍓; show only "運搬中" or nothing */
+/* player list rendering */
 function renderPlayerList(){
   playerListEl.innerHTML = "";
   const sorted = allPlayers.slice().sort((a,b)=> a.team.localeCompare(b.team) || (a.name||"").localeCompare(b.name));
@@ -979,13 +938,17 @@ setInterval(async ()=>{
       await setDoc(gRef, { ...g, state: "ended" });
       await finalizeAndResetRound();
     }
-  } catch(e){}
+  } catch(e){ console.warn(e); }
 }, 3000);
 
 /* frequent attempts to improve responsiveness */
 setInterval(async ()=>{ for (const s of strawberries) attemptCollectStraw(s); await checkCapturesAndHandle(); }, 1200);
 
-/* EOF */
+/* global error handler to assist debugging */
+window.addEventListener('error', (ev) => {
+  console.error("Global error:", ev.error || ev.message, ev);
+});
+
 </script>
 </body>
 </html>
