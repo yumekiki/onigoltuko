@@ -1,51 +1,56 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>マルチプレイ基盤 - 迷路／Carry安定版</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>マルチプレイ基盤 - 迷路 / Carry 安定版</title>
 <style>
-:root{--bg:#0d0f12;--panel:#111317;--muted:#9aa3ad}
-*{box-sizing:border-box}
-body{margin:0;font-family:system-ui,"Hiragino Kaku Gothic ProN","メイリオ",sans-serif;background:var(--bg);color:#e6eef6}
-#app{display:flex;gap:12px;padding:12px;height:100vh}
-#left{flex:1;display:flex;flex-direction:column;gap:12px;align-items:center}
-#right{width:380px;background:linear-gradient(180deg,#0b0d10,#0f1113);padding:14px;border-radius:10px;display:flex;flex-direction:column;gap:12px}
-canvas{border-radius:8px;background:#081018;display:block}
-.panel{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:12px;border-radius:8px;width:100%}
-.center{text-align:center}
-button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;padding:8px 12px;border-radius:8px;cursor:pointer}
-.big{font-size:1.05rem;padding:10px 14px}
-.small{font-size:0.85rem;color:var(--muted)}
-.scoreBox{background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:8px}
-#log{flex:1;overflow:auto;padding:8px}
-.logItem{margin-bottom:6px;font-size:0.95rem;padding:6px 8px;border-radius:8px}
-.log-info{background:rgba(255,255,255,0.02);color:#dbe9ff}
-.log-event{background:rgba(255,215,170,0.06);color:#fff0df}
-.log-error{background:rgba(255,80,80,0.06);color:#ffd3d3}
-#adminSmall{position:fixed;left:12px;top:12px;background:rgba(0,0,0,0.35);padding:6px 8px;border-radius:6px;font-size:.85rem;cursor:pointer;z-index:999}
-.hidden{display:none}
-.nameInput{padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;width:220px}
-#playerList{max-height:220px;overflow:auto;padding:6px;display:flex;flex-direction:column;gap:6px}
-.playerRow{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:6px;background:rgba(255,255,255,0.02)}
-.minimap{width:100%;height:140px;border-radius:6px;background:#041218;display:block}
-#loadingOverlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:9999;color:#fff;font-size:1.1rem}
-#boostStatus{margin-top:8px;font-weight:700;color:#bfffbf;text-align:center;min-height:22px}
-#dashStatus{font-weight:700;color:#ffd;margin-left:10px}
+  :root{ --bg:#0d0f12; --panel:#111317; --muted:#9aa3ad; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui, "Hiragino Kaku Gothic ProN","メイリオ",sans-serif;background:var(--bg);color:#e6eef6}
+  #app{display:flex;gap:12px;padding:12px;height:100vh}
+  #left{flex:1;display:flex;flex-direction:column;gap:12px;align-items:center}
+  #right{width:380px;background:linear-gradient(180deg,#0b0d10,#0f1113);padding:14px;border-radius:10px;display:flex;flex-direction:column;gap:12px}
+  canvas{border-radius:8px;background:#081018;display:block}
+  .panel{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:12px;border-radius:8px;width:100%}
+  .center{text-align:center}
+  button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;padding:8px 12px;border-radius:8px;cursor:pointer}
+  .big{font-size:1.05rem;padding:10px 14px}
+  .small{font-size:0.85rem;color:var(--muted)}
+  .scoreBox{background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:8px}
+  #log{flex:1;overflow:auto;padding:8px}
+  .logItem{margin-bottom:6px;font-size:0.95rem;padding:6px 8px;border-radius:8px}
+  .log-info{background:rgba(255,255,255,0.02);color:#dbe9ff}
+  .log-event{background:rgba(255,215,170,0.06);color:#fff0df}
+  .log-error{background:rgba(255,80,80,0.06);color:#ffd3d3}
+  #adminSmall{position:fixed;left:12px;top:12px;background:rgba(0,0,0,0.35);padding:6px 8px;border-radius:6px;font-size:.85rem;cursor:pointer;z-index:999}
+  .hidden{display:none}
+  .nameInput{padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;width:220px}
+  #playerList{max-height:220px;overflow:auto;padding:6px;display:flex;flex-direction:column;gap:6px}
+  .playerRow{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:6px;background:rgba(255,255,255,0.02)}
+  .minimap{width:100%;height:140px;border-radius:6px;background:#041218;display:block}
+  #loadingOverlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:9999;color:#fff;font-size:1.1rem}
+  #boostStatus{margin-top:8px;font-weight:700;color:#bfffbf;text-align:center;min-height:22px}
+  #dashStatus{font-weight:700;color:#ffd;margin-left:10px}
 </style>
 </head>
 <body>
 <div id="adminSmall">管理</div>
+
 <div id="app">
   <div id="left">
     <div id="screen-waiting" class="panel">
-      <div class="center"><h2>待機 / ルール</h2><p class="small">参加を押して参加してください。</p>
+      <div class="center">
+        <h2>待機 / ルール</h2>
+        <p class="small">参加するを押すとチーム選択へ。BGMは参加操作で開始します。</p>
         <div style="margin-top:12px;display:flex;gap:8px;justify-content:center">
           <button id="toTeamBtn" class="big">参加する</button>
-          <button id="homeResetBtn" class="big">強制リセット</button>
+          <button id="homeResetBtn" class="big">強制リセ��ト</button>
         </div>
       </div>
-      <div style="margin-top:12px"><div class="small">イチゴは4つ、Shiftで掴み運搬、離すで設置。4箇所すべての納品所に設置で逃げ勝利。鬼は捕獲で+5。</div></div>
+      <div style="margin-top:12px">
+        <div class="small">迷路（ランダム）を配置して開始します。通路幅は十分広く、アイテム・リスポーンは壁と重ならないよう配置します。</div>
+      </div>
       <div style="margin-top:8px" class="small center">チーム人数 — 鬼: <span id="waitOniCount">0</span> / 逃げ: <span id="waitRunnerCount">0</span></div>
     </div>
 
@@ -59,9 +64,9 @@ button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:inhe
     </div>
 
     <div id="screen-join" class="panel hidden">
-      <h2 class="center">名前入力</h2>
+      <h2 class="center">名前を入力して参加</h2>
       <div style="display:flex;gap:8px;justify-content:center;margin-top:8px">
-        <input id="inputName" class="nameInput" placeholder="名前" maxlength="16"/>
+        <input id="inputName" class="nameInput" placeholder="名前を入力" maxlength="16" />
         <button id="joinNow">参加</button>
       </div>
       <div style="margin-top:8px;text-align:center"><button id="backFromJoin">戻る</button></div>
@@ -76,6 +81,7 @@ button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:inhe
           <button id="leaveBtn">離脱</button>
         </div>
       </div>
+
       <div style="margin-top:12px;width:100%">
         <canvas id="gameCanvas" width="1200" height="640"></canvas>
         <div id="boostStatus" class="panel" style="margin-top:8px;background:linear-gradient(180deg,#06281f,#0b3940)"></div>
@@ -86,7 +92,10 @@ button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:inhe
   <div id="right">
     <div class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><div id="playerInfoName" style="font-weight:700">未参加</div><div id="playerInfoTeam" class="small">チーム: -</div></div>
+        <div>
+          <div id="playerInfoName" style="font-weight:700">未参加</div>
+          <div id="playerInfoTeam" class="small">チーム: -</div>
+        </div>
         <div><div class="small">放置: <span id="idleCount">0</span>s</div></div>
       </div>
     </div>
@@ -98,32 +107,50 @@ button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:inhe
     </div>
 
     <div class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:700">イベントログ</div><div class="small">10秒で消えます</div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:700">イベントログ</div><div class="small">10秒で消えます</div>
+      </div>
       <div id="log" class="muted"></div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:8px"><button id="adminReset" class="hidden">強制リセット</button><div class="small" id="statusSmall">状態: 初期</div></div>
-      <div style="margin-top:8px"><canvas id="miniMap" class="minimap"></canvas><div class="small">map.png を置くと背景に反映されます。</div></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+        <button id="adminReset" class="hidden">強制リセット</button>
+        <div class="small" id="statusSmall">状態: 初期</div>
+      </div>
+      <div style="margin-top:8px">
+        <canvas id="miniMap" class="minimap"></canvas>
+        <div class="small">map.png を置くと背景に反映されます。</div>
+      </div>
     </div>
   </div>
 </div>
 
 <div id="loadingOverlay">処理中... 少しお待ちください</div>
 
-<!-- assets -->
+<!-- assets: place these in same folder -->
 <audio id="bgm" src="bgm.mp3" preload="auto" loop></audio>
 <audio id="asioto" src="asioto.mp3" preload="auto"></audio>
 <audio id="explosion" src="explosion.mp3" preload="auto"></audio>
 
 <script type="module">
-/* 完全版（迷路生成 / Carry安定 / movement fixes） */
+/* 完全版 single-file implementing:
+   - maze walls (random at start) stored in Firestore 'walls' collection
+   - walls are axis-aligned rectangles; movement collides with walls client-side
+   - items and spawns placed only in open tiles
+   - robust carry/pickup/release behavior: transaction-secured ownerId
+   - auto-drop when oni close
+   - footstep audible multiplier variable
+   - BGM playback on participant action
+   - fixes for movement freeze by respecting local optimistic moves when recent
+*/
 
+/* Firebase imports */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-analytics.js";
 import {
   getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDoc,
-  onSnapshot, getDocs, runTransaction, writeBatch, serverTimestamp
+  onSnapshot, getDocs, runTransaction, writeBatch, serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
-/* Firebase config */
+/* ====== FIREBASE CONFIG - keep your config here (already provided earlier) ====== */
 const firebaseConfig = {
   apiKey: "AIzaSyBmgtx4FW_3_0zy1MvAvZLPHmE_CE1txuE",
   authDomain: "zzke-ki1.firebaseapp.com",
@@ -138,12 +165,13 @@ const app = initializeApp(firebaseConfig);
 try { getAnalytics(app); } catch(e){}
 const db = getFirestore(app);
 
-/* Collections and constants */
+/* ====== CONFIG ====== */
 const GAME_COLLECTION = "games";
 const GAME_DOC_ID = "current_round";
 const PLAYERS_COL = "players";
 const STRAWBERRIES_COL = "strawberries";
 const DELIVERIES_COL = "deliveries";
+const WALLS_COL = "walls";
 
 const MAP_SIZE = 2000;
 let VISIBILITY_RADIUS = 200;
@@ -152,14 +180,14 @@ const CAPTURE_RADIUS = 36;
 const POSITION_THROTTLE_MS = 180;
 const WIN_SCORE = 50;
 
-/* Speed multipliers */
+/* speed multipliers (global requested multipliers previously applied) */
 const GLOBAL_SPEED_MULT = 1.5;
 const BASE_RUNNER_SPEED = 2.6;
 const BASE_ONI_SPEED = 2.4;
 let RUNNER_SPEED = BASE_RUNNER_SPEED * GLOBAL_SPEED_MULT;
 let ONI_SPEED = BASE_ONI_SPEED * GLOBAL_SPEED_MULT;
 
-/* Dash */
+/* Dash: set large multiplier per user request, tunable */
 let DASH_MULT = 9.0;
 const DASH_DUR_MS = 3000;
 const DASH_CT_MS = 10000;
@@ -171,218 +199,265 @@ const CARRY_SPEED_MULT = 0.4;
 const COOP_BOOST_DIST = 120;
 const COOP_SPEED_MULT = 1.3;
 
-/* Footstep range multiplier (configurable) */
+/* Footstep audible range multiplier - changeable here */
 let FOOTSTEP_RANGE_MULT = 5;
 
-/* Throttles */
-const STRAW_UPDATE_THROTTLE_MS = 300; // strawberry position update while carrying
-const HEAVY_TASK_INTERVAL_MS = 700;    // heavy tasks (captures, picks) run less frequently
+/* Maze grid params (tile-based) */
+const tileSize = 50; // tile pixel size
+const cols = Math.floor(MAP_SIZE / tileSize); // ensure fits
+const rows = Math.floor(MAP_SIZE / tileSize);
+const pathWidthPx = 34; // width of path in pixels (must be <= tileSize)
+const wallThickness = tileSize - pathWidthPx;
 
-/* Maze generation parameters */
-const CELL_SIZE = 140; // corridor cell size (>= player size)
-const WALL_THICKNESS = 20; // extra spacing for walls (visual)
-let maze = { cells: [], cols: 0, rows: 0, walls: [] }; // walls: array of rects {x,y,w,h}
+/* Admin */
+const ADMIN_PASS = "1122";
 
-/* assets (sprites optional) */
-const ASSETS = { map:"map.png", runner:"runner.png", oni:"oni.png", delivery:"delivery.png", strawberry:"strawberry.png" };
-const mapImage = new Image(), spriteRunner = new Image(), spriteOni = new Image(), spriteDelivery = new Image(), spriteStraw = new Image();
-let mapImageLoaded=false, spriteRunnerLoaded=false, spriteOniLoaded=false, spriteDeliveryLoaded=false, spriteStrawLoaded=false;
-mapImage.src = ASSETS.map; mapImage.onload=()=>mapImageLoaded=true;
-spriteRunner.src = ASSETS.runner; spriteRunner.onload=()=>spriteRunnerLoaded=true;
-spriteOni.src = ASSETS.oni; spriteOni.onload=()=>spriteOniLoaded=true;
-spriteDelivery.src = ASSETS.delivery; spriteDelivery.onload=()=>spriteDeliveryLoaded=true;
-spriteStraw.src = ASSETS.strawberry; spriteStraw.onload=()=>spriteStrawLoaded=true;
+/* Assets names (place PNGs in same dir) */
+const ASSETS = {
+  map: "map.png",
+  runner: "runner.png",
+  oni: "oni.png",
+  delivery: "delivery.png",
+  strawberry: "strawberry.png"
+};
 
-/* state */
-let sessionId=null, localPlayer=null, allPlayers=[], strawberries=[], deliveries=[], gameDoc=null;
-let lastPosSend=0, joinedTeamChoice=null, adminMode=false;
+/* ====== STATE ====== */
+let sessionId = null;
+let localPlayer = null;
+let allPlayers = [];
+let strawberries = [];
+let deliveries = [];
+let walls = []; // array of {x,y,w,h} in pixels
+let gameDoc = null;
+let lastPosSend = 0;
+let joinedTeamChoice = null;
+let adminMode = false;
+
+/* avoid overwriting local optimistic moves */
+let lastLocalMoveTime = 0;
 
 /* UI refs */
-const screens={waiting:document.getElementById("screen-waiting"),team:document.getElementById("screen-team"),join:document.getElementById("screen-join"),game:document.getElementById("screen-game")};
-const loadingOverlay=document.getElementById("loadingOverlay");
-const gameCanvas=document.getElementById("gameCanvas"), gctx=gameCanvas.getContext("2d");
-const miniMap=document.getElementById("miniMap"), miniCtx=miniMap.getContext("2d");
-const bgmAudio=document.getElementById("bgm");
-const toTeamBtn=document.getElementById("toTeamBtn"), chooseOni=document.getElementById("chooseOni"), chooseRunner=document.getElementById("chooseRunner");
-const backFromTeam=document.getElementById("backFromTeam"), backFromJoin=document.getElementById("backFromJoin"), joinNow=document.getElementById("joinNow");
-const inputName=document.getElementById("inputName"), leaveBtn=document.getElementById("leaveBtn");
-const playerInfoName=document.getElementById("playerInfoName"), playerInfoTeam=document.getElementById("playerInfoTeam");
-const topOni=document.getElementById("topOni"), topRunnerRem=document.getElementById("topRunnerRem");
-const logEl=document.getElementById("log"), playerListEl=document.getElementById("playerList");
-const adminSmall=document.getElementById("adminSmall"), adminResetBtn=document.getElementById("adminReset");
-const dashStatusEl=document.getElementById("dashStatus"), waitOniCount=document.getElementById("waitOniCount"), waitRunnerCount=document.getElementById("waitRunnerCount");
+const screens = { waiting: document.getElementById("screen-waiting"), team: document.getElementById("screen-team"), join: document.getElementById("screen-join"), game: document.getElementById("screen-game") };
+const loadingOverlay = document.getElementById("loadingOverlay");
+const gameCanvas = document.getElementById("gameCanvas");
+const gctx = gameCanvas.getContext("2d");
+const miniMap = document.getElementById("miniMap");
+const miniCtx = miniMap.getContext("2d");
+const boostStatusEl = document.getElementById("boostStatus");
+const bgmAudio = document.getElementById("bgm");
 
-/* unsub handles */
-let unsubGame=null, unsubPlayers=null, unsubStraw=null, unsubDeliveries=null;
+const toTeamBtn = document.getElementById("toTeamBtn");
+const chooseOni = document.getElementById("chooseOni");
+const chooseRunner = document.getElementById("chooseRunner");
+const backFromTeam = document.getElementById("backFromTeam");
+const backFromJoin = document.getElementById("backFromJoin");
+const joinNow = document.getElementById("joinNow");
+const inputName = document.getElementById("inputName");
+const leaveBtn = document.getElementById("leaveBtn");
+const playerInfoName = document.getElementById("playerInfoName");
+const playerInfoTeam = document.getElementById("playerInfoTeam");
+const topOni = document.getElementById("topOni");
+const topRunnerRem = document.getElementById("topRunnerRem");
+const oniCountEl = document.getElementById("oniCount");
+const runnerCountEl = document.getElementById("runnerCount");
+const logEl = document.getElementById("log");
+const adminSmall = document.getElementById("adminSmall");
+const adminResetBtn = document.getElementById("adminReset");
+const statusSmall = document.getElementById("statusSmall");
+const playerListEl = document.getElementById("playerList");
+const homeResetBtn = document.getElementById("homeResetBtn");
+const dashStatusEl = document.getElementById("dashStatus");
+const waitOniCount = document.getElementById("waitOniCount");
+const waitRunnerCount = document.getElementById("waitRunnerCount");
+
+/* audio */
+const asiotoAudio = document.getElementById("asioto");
+const explosionAudio = document.getElementById("explosion");
+
+/* unsub */
+let unsubGame=null, unsubPlayers=null, unsubStraw=null, unsubDeliveries=null, unsubWalls=null;
+
+/* load sprite images if available */
+const mapImage = new Image(); let mapImageLoaded=false;
+const sprRunner = new Image(); let sprRunnerLoaded=false;
+const sprOni = new Image(); let sprOniLoaded=false;
+const sprDelivery = new Image(); let sprDeliveryLoaded=false;
+const sprStraw = new Image(); let sprStrawLoaded=false;
+
+mapImage.src = ASSETS.map; mapImage.onload = ()=>mapImageLoaded=true;
+sprRunner.src = ASSETS.runner; sprRunner.onload = ()=>sprRunnerLoaded=true;
+sprOni.src = ASSETS.oni; sprOni.onload = ()=>sprOniLoaded=true;
+sprDelivery.src = ASSETS.delivery; sprDelivery.onload = ()=>sprDeliveryLoaded=true;
+sprStraw.src = ASSETS.strawberry; sprStraw.onload = ()=>sprStrawLoaded=true;
 
 /* camera smoothing */
-const camera={x:MAP_SIZE/2,y:MAP_SIZE/2,lerp:0.18};
+const camera = { x: MAP_SIZE/2, y: MAP_SIZE/2, lerp: 0.18 };
 
 /* helpers */
 function showScreen(name){ for(const k in screens) screens[k].classList.add("hidden"); screens[name].classList.remove("hidden"); }
-function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
 function nowMillis(){ return Date.now(); }
 function showLoading(on){ loadingOverlay.style.display = on ? "flex" : "none"; }
-function updateStatus(s){ document.getElementById("statusSmall").textContent = "状態: " + s; }
-function pushLog(text,type="info"){ const el=document.createElement("div"); el.className="logItem "+(type==="event"?"log-event":(type==="error"?"log-error":"log-info")); el.textContent=`[${new Date().toLocaleTimeString()}] ${text}`; logEl.prepend(el); setTimeout(()=>{ try{ el.remove(); }catch(e){} },10000); while(logEl.children.length>200) logEl.removeChild(logEl.lastChild); }
+function updateStatus(s){ statusSmall.textContent = "状態: " + s; }
 
-/* FIRESTORE ensure game doc */
-async function ensureGame(){ const gRef=doc(db,GAME_COLLECTION,GAME_DOC_ID); const snap=await getDoc(gRef); if(!snap.exists()){ await setDoc(gRef,{state:"waiting",scores:{oni:0,runner:0},mapSize:MAP_SIZE,runnerRemaining:4,createdAt:serverTimestamp()}); } }
+/* logging auto-clear 10s */
+function pushLog(text, type="info"){
+  const el = document.createElement("div");
+  el.className = "logItem " + (type==="event"?"log-event":(type==="error"?"log-error":"log-info"));
+  el.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+  logEl.prepend(el);
+  setTimeout(()=>{ try{ el.remove(); }catch(e){} }, 10000);
+  while(logEl.children.length>200) logEl.removeChild(logEl.lastChild);
+}
 
-/* Maze generator (grid-DFS) */
-function generateMaze(){
-  const cols = Math.floor(MAP_SIZE / CELL_SIZE);
-  const rows = Math.floor(MAP_SIZE / CELL_SIZE);
-  maze.cols = cols; maze.rows = rows;
-  // create grid visited and walls between cells
-  const visited = Array.from({length:rows}, ()=>Array(cols).fill(false));
-  const walls = []; // wall rects
-  // directions
-  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-
-  // carve passages with DFS starting at random cell
-  function neighbors(r,c){
-    const list=[];
-    for(const [dx,dy] of dirs){ const nr=r+dy, nc=c+dx; if(nr>=0 && nr<rows && nc>=0 && nc<cols) list.push([nr,nc]); }
-    return list;
+/* FIRESTORE: ensure game doc exists */
+async function ensureGame(){
+  const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
+  const snap = await getDoc(gRef);
+  if (!snap.exists()){
+    await setDoc(gRef, { state:"waiting", scores:{ oni:0, runner:0 }, mapSize:MAP_SIZE, runnerRemaining:4, createdAt: serverTimestamp() });
   }
-  const stack = [];
-  const startR = Math.floor(Math.random()*rows), startC = Math.floor(Math.random()*cols);
-  visited[startR][startC]=true; stack.push([startR,startC]);
+}
+
+/* MAZE GENERATION (randomized DFS on odd-sized grid), store as wall rectangles
+   Grid: use cell grid where every cell is either wall or passage; ensure pathWidthPx wide passages by computing rectangle sizes.
+*/
+function generateMazeGrid(rows, cols){
+  // create boolean grid: true = wall, false = passage
+  // initialize all cells as walls
+  const grid = Array.from({length:rows}, ()=>Array(cols).fill(true));
+  // start at random odd cell
+  const startR = Math.floor(Math.random() * Math.floor(rows/2)) * 2 + 1;
+  const startC = Math.floor(Math.random() * Math.floor(cols/2)) * 2 + 1;
+  const stack = [[startR, startC]];
+  grid[startR][startC] = false;
+  const dirs = [[2,0],[-2,0],[0,2],[0,-2]];
   while(stack.length){
     const [r,c] = stack[stack.length-1];
-    const nbs = neighbors(r,c).filter(([nr,nc])=>!visited[nr][nc]);
-    if(nbs.length===0){ stack.pop(); continue; }
-    const [nr,nc] = nbs[Math.floor(Math.random()*nbs.length)];
-    // remove wall between (r,c) and (nr,nc) by recording passage; we just mark visited
-    visited[nr][nc]=true;
-    stack.push([nr,nc]);
+    // shuffle dirs
+    const shuffled = dirs.slice().sort(()=>Math.random()-0.5);
+    let carved=false;
+    for (const [dr,dc] of shuffled){
+      const nr = r+dr, nc = c+dc;
+      if (nr>0 && nr<rows-1 && nc>0 && nc<cols-1 && grid[nr][nc]){
+        // carve intermediate
+        grid[r+dr/2][c+dc/2] = false;
+        grid[nr][nc] = false;
+        stack.push([nr,nc]);
+        carved=true; break;
+      }
+    }
+    if (!carved) stack.pop();
   }
-  // Now create walls as rectangles covering the complement (grid-based)
-  // We'll make each cell a passage; walls will be between cells grid lines
-  maze.walls = [];
-  // For simplicity, we create walls on grid lines except where passage exists between two adjacent cells.
-  // We'll consider every cell center as free; walls are between cells with no direct neighbor path (but since our DFS carved all cells visited => full connectivity).
-  // To produce maze-like walls with open passages, we instead generate a randomized blocking pattern that ensures connectivity.
-  // Simpler approach: generate random rectangular blocks but ensure they don't block all paths — we'll place blocking rectangles in random positions on even rows/cols.
-  // Implementation: create a number of rectangular walls placed on grid but do not cover cell centers.
-  const numWalls = Math.floor((cols*rows)/12); // density
-  for(let i=0;i<numWalls;i++){
-    const wCells = Math.max(1, Math.floor(Math.random()*3));
-    const hCells = Math.max(1, Math.floor(Math.random()*3));
-    const cx = Math.floor(Math.random()*(cols - wCells));
-    const cy = Math.floor(Math.random()*(rows - hCells));
-    const x = cx*CELL_SIZE - WALL_THICKNESS/2;
-    const y = cy*CELL_SIZE - WALL_THICKNESS/2;
-    const w = wCells*CELL_SIZE + WALL_THICKNESS;
-    const h = hCells*CELL_SIZE + WALL_THICKNESS;
-    // ensure not covering exact centers: shift slightly to avoid center positions
-    maze.walls.push({x,y,w,h});
-  }
-  // Guarantee walls do not cover a central circle area where we might need spawns (optional)
-  return maze;
+  return grid;
 }
 
-/* utility to test point-wall collision */
-function isPointInWall(x,y){
-  for(const w of maze.walls){
-    if (x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) return true;
-  }
-  return false;
-}
-
-/* Choose spawn positions: find cell centers not inside walls */
-function findFreeCellCenter(){
-  const maxAttempts = 200;
-  for(let i=0;i<maxAttempts;i++){
-    const px = Math.floor(Math.random()*(MAP_SIZE));
-    const py = Math.floor(Math.random()*(MAP_SIZE));
-    // snap to nearest cell center
-    const cx = Math.round(px / CELL_SIZE) * CELL_SIZE;
-    const cy = Math.round(py / CELL_SIZE) * CELL_SIZE;
-    const x = clamp(cx, 20, MAP_SIZE-20);
-    const y = clamp(cy, 20, MAP_SIZE-20);
-    if(!isPointInWall(x,y)) return {x,y};
-  }
-  // fallback: brute force scan
-  for(let x=20;x<MAP_SIZE-20;x+=CELL_SIZE){
-    for(let y=20;y<MAP_SIZE-20;y+=CELL_SIZE){
-      if(!isPointInWall(x,y)) return {x,y};
+/* convert grid into wall rectangles (pixel coords)
+   Each grid cell is tileSize px; if grid[r][c] is wall, rectangle covers that cell area
+*/
+function gridToWallRects(grid){
+  const rects = [];
+  for (let r=0;r<grid.length;r++){
+    for (let c=0;c<grid[0].length;c++){
+      if (grid[r][c]){
+        rects.push({ x: c*tileSize, y: r*tileSize, w: tileSize, h: tileSize });
+      }
     }
   }
-  // final fallback: random anywhere not in wall
-  for(let i=0;i<500;i++){
-    const x=Math.random()*MAP_SIZE, y=Math.random()*MAP_SIZE;
-    if(!isPointInWall(x,y)) return {x,y};
-  }
-  // If all fails, return center
-  return {x:MAP_SIZE/2, y:MAP_SIZE/2};
+  return rects;
 }
 
-/* seed: create deliveries and strawberries at free centers */
+/* create maze if walls collection empty (only one client should do this). We'll store a single doc per wall rect for simplicity. */
+async function seedMazeIfEmpty(){
+  const snaps = await getDocs(collection(db, WALLS_COL));
+  if (snaps.size > 0) return; // already generated
+  // ensure grid has odd dimensions for maze algorithm to work well
+  const rowsGrid = Math.floor(rows);
+  const colsGrid = Math.floor(cols);
+  const grid = generateMazeGrid(rowsGrid, colsGrid);
+  const rects = gridToWallRects(grid);
+  // commit in batches
+  const batchSize = 400; // avoid huge writes; commit in chunks
+  for (let i=0;i<rects.length;i+=batchSize){
+    const chunk = rects.slice(i, i+batchSize);
+    const batch = writeBatch(db);
+    for (const r of chunk){
+      const wref = doc(collection(db, WALLS_COL));
+      batch.set(wref, r);
+    }
+    await batch.commit();
+  }
+  // ensure deliveries and strawberries placed in passages (choose open cells)
+  await seedMapOnce(); // ensures deliveries and strawberries exist
+}
+
+/* ensure deliveries (corners) and strawberries (4 central-biased) */
 async function seedMapOnce(){
-  // regenerate maze
-  generateMaze();
-  // deliveries: 4 corners but ensure not in wall, we try to place near corners
   const dSnap = await getDocs(collection(db, DELIVERIES_COL));
   if (dSnap.size === 0){
-    const pts = [{x:80,y:80},{x:MAP_SIZE-80,y:80},{x:80,y:MAP_SIZE-80},{x:MAP_SIZE-80,y:MAP_SIZE-80}];
-    for(const p of pts){
-      // if cell center is in wall, find nearest free
-      let pos = p;
-      if (isPointInWall(pos.x,pos.y)) pos = findFreeCellCenter();
-      await addDoc(collection(db, DELIVERIES_COL), {...pos, occupied:false, strawberryId:null});
-    }
+    const pts = [
+      { x: 80, y: 80, occupied:false, strawberryId:null },
+      { x: MAP_SIZE-80, y: 80, occupied:false, strawberryId:null },
+      { x: 80, y: MAP_SIZE-80, occupied:false, strawberryId:null },
+      { x: MAP_SIZE-80, y: MAP_SIZE-80, occupied:false, strawberryId:null }
+    ];
+    for (const p of pts) await addDoc(collection(db, DELIVERIES_COL), p);
   }
-  // strawberries: ensure exactly 4, spawn at central-biased positions that are not inside walls
   const sSnap = await getDocs(collection(db, STRAWBERRIES_COL));
   if (sSnap.size === 0){
-    for(let i=0;i<4;i++){
-      const pos = findFreeCellCenter();
-      await addDoc(collection(db, STRAWBERRIES_COL), {x:pos.x, y:pos.y, available:true, ownerId:null, placedAtDelivery:null});
+    // generate 4 strawberries near center (central-biased)
+    for (let i=0;i<4;i++){
+      const pos = randPosCentral();
+      await addDoc(collection(db, STRAWBERRIES_COL), { x: pos.x, y: pos.y, available: true, ownerId: null, placedAtDelivery: null });
     }
   } else {
     if (sSnap.size < 4){
-      for(let i=sSnap.size;i<4;i++){ const pos = findFreeCellCenter(); await addDoc(collection(db, STRAWBERRIES_COL), {x:pos.x, y:pos.y, available:true, ownerId:null, placedAtDelivery:null}); }
-    }
-    // ensure existing strawberries are not in wall; if in wall, teleport them
-    for(const d of sSnap.docs){
-      const s = d.data();
-      if (isPointInWall(s.x,s.y)){
-        const pos = findFreeCellCenter();
-        try{ await updateDoc(doc(db, STRAWBERRIES_COL, d.id), { x: pos.x, y: pos.y, available:true, ownerId:null, placedAtDelivery:null }); } catch(e){}
+      for (let i=sSnap.size;i<4;i++){
+        const pos = randPosCentral();
+        await addDoc(collection(db, STRAWBERRIES_COL), { x: pos.x, y: pos.y, available: true, ownerId: null, placedAtDelivery: null });
       }
     }
   }
 }
 
-/* Stable join flow (prevent first-join race) */
+/* central-biased random pos */
+function randNormalCentered(stdFrac=6){
+  const mean = MAP_SIZE/2;
+  const std = MAP_SIZE / stdFrac;
+  let u=0,v=0; while(u===0) u=Math.random(); while(v===0) v=Math.random();
+  const z = Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+  return Math.round(clamp(mean + z*std, 0, MAP_SIZE));
+}
+function randPosCentral(){ return { x: randNormalCentered(), y: randNormalCentered() }; }
+
+/* JOIN flow with listener wait and BGM start */
 async function joinAs(name, team){
   showLoading(true);
   await ensureGame();
+  // seed maze if empty (first client)
+  try { await seedMazeIfEmpty(); } catch(e){ console.warn("seed maze err", e); }
+  // remove old same-name sessions
   try {
-    // remove same-name
-    try {
-      const snaps = await getDocs(collection(db, PLAYERS_COL));
-      for(const d of snaps.docs){
-        const data = d.data();
-        if (data && data.name === name){ try{ await deleteDoc(d.ref); pushLog(`古いセッション ${name} 削除`, "info"); }catch(e){} }
+    const snaps = await getDocs(collection(db, PLAYERS_COL));
+    for (const d of snaps.docs){
+      const data = d.data();
+      if (data && data.name === name){
+        try { await deleteDoc(d.ref); pushLog(`古いセッション(${name})を削除`, "info"); } catch(e){}
       }
-    } catch(e){}
-    // spawn position on free cell center
-    const pos = findFreeCellCenter();
-    const pRef = await addDoc(collection(db, PLAYERS_COL), {
-      name: name || "Player", team, x: pos.x, y: pos.y, possession:0, lastAction: serverTimestamp(), dashReadyAt:0, carryingStraw: null
-    });
+    }
+  } catch(e){}
+  try {
+    const pRef = await addDoc(collection(db, PLAYERS_COL), { name: name||"Player", team, x: randPosCentral().x, y: randPosCentral().y, possession:0, lastAction: serverTimestamp(), dashReadyAt:0, carryingStraw:null });
     sessionId = pRef.id;
     setupListeners();
-    // wait until snapshot sees us
+    // wait for local snapshot to appear (avoid first-join race)
     const start = Date.now(); let ok=false;
-    while(Date.now() - start < 5000){
-      if (allPlayers.find(p => p._id === sessionId)){ ok=true; break; }
-      await new Promise(r => setTimeout(r,150));
+    while(Date.now()-start < 5000){
+      if (allPlayers.find(p => p._id===sessionId)){ ok=true; break; }
+      await new Promise(r=>setTimeout(r,150));
     }
-    if (!ok) pushLog("参加反映遅延あり（続行）", "error");
+    if (!ok) pushLog("参加反映遅延がありますが続行します","error");
+    // set game playing if waiting
     try {
       await runTransaction(db, async (t) => {
         const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
@@ -392,139 +467,217 @@ async function joinAs(name, team){
         if (g.state === "waiting") t.update(gRef, { state: "playing" });
       });
     } catch(e){}
-    // start BGM on user action
-    try { bgmAudio.currentTime = 0; bgmAudio.play().catch(()=>{}); } catch(e){}
+    // try play bgm (user action triggered)
+    try { bgmAudio.currentTime = 0; await bgmAudio.play().catch(()=>{}); } catch(e){}
     showLoading(false);
     showScreen("game");
-    updateStatus("参加中: " + name + " (" + team + ")");
+    updateStatus("参加中: "+name+" ("+team+")");
     pushLog(`${name} が参加しました (チーム: ${team})`, "event");
   } catch(e){
-    showLoading(false);
-    pushLog("参加失敗: " + (e.message||e), "error");
-    alert("参加に失敗しました。コンソールを確認してください。");
+    showLoading(false); pushLog("参加失敗: "+(e.message||e),"error"); alert("参加失敗");
   }
 }
 
-/* Listeners: game, players, strawberries, deliveries */
+/* LEAVE */
+async function leave(){
+  if (!sessionId) return;
+  try { await deleteDoc(doc(db, PLAYERS_COL, sessionId)); } catch(e){}
+  sessionId = null; localPlayer = null;
+  tearDownListeners();
+  showScreen("waiting");
+  updateStatus("離脱しました");
+  try { bgmAudio.pause(); bgmAudio.currentTime = 0; } catch(e){}
+}
+
+/* LISTENERS: walls, players, strawberries, deliveries */
 function setupListeners(){
+  if (unsubWalls) unsubWalls();
+  unsubWalls = onSnapshot(collection(db, WALLS_COL), (snap) => {
+    const rects = []; snap.forEach(d => { const data = d.data(); rects.push(data); });
+    walls = rects;
+  });
+
   if (unsubGame) unsubGame();
-  unsubGame = onSnapshot(doc(db, GAME_COLLECTION, GAME_DOC_ID), snap => { if(!snap.exists()) return; gameDoc = snap.data(); topOni.textContent = gameDoc.scores?.oni || 0; if (gameDoc.state === "waiting"){ pushLog("ラウンド待機へ", "info"); showScreen("team"); } });
+  unsubGame = onSnapshot(doc(db, GAME_COLLECTION, GAME_DOC_ID), (snap) => {
+    if (!snap.exists()) return;
+    gameDoc = snap.data();
+    topOni.textContent = gameDoc.scores?.oni || 0;
+    if (gameDoc.state === "waiting") { pushLog("ラウンド待機に戻りました","info"); showScreen("team"); }
+  });
 
   if (unsubPlayers) unsubPlayers();
-  unsubPlayers = onSnapshot(collection(db, PLAYERS_COL), snap => {
-    const arr = []; snap.forEach(d => { const data=d.data(); data._id=d.id; arr.push(data); });
+  unsubPlayers = onSnapshot(collection(db, PLAYERS_COL), (snap) => {
+    // map snapshot to array but preserve local optimistic movement if recent
+    const arr = []; snap.forEach(d => { const data = d.data(); data._id = d.id; arr.push(data); });
+    // update allPlayers but avoid overwriting localPlayer position if local moved recently
+    if (sessionId){
+      const serverLocal = arr.find(p => p._id === sessionId);
+      if (serverLocal){
+        if (lastLocalMoveTime && (Date.now() - lastLocalMoveTime) < 250){
+          // ignore server position for local player to avoid stepping back
+          arr.forEach((p,i)=>{ if (p._id === sessionId && localPlayer){ arr[i].x = localPlayer.x; arr[i].y = localPlayer.y; arr[i].carryingStraw = localPlayer.carryingStraw; } });
+        }
+      }
+    }
     allPlayers = arr;
     localPlayer = allPlayers.find(p => p._id === sessionId) || localPlayer;
-    const oniCount = allPlayers.filter(p => p.team==="oni").length;
-    const runnerCount = allPlayers.filter(p => p.team==="runner").length;
-    document.getElementById("oniCount").textContent = "人数: " + oniCount;
-    document.getElementById("runnerCount").textContent = "人数: " + runnerCount;
+    const oniCount = allPlayers.filter(p => p.team === "oni").length;
+    const runnerCount = allPlayers.filter(p => p.team === "runner").length;
+    oniCountEl.textContent = "人数: "+oniCount; runnerCountEl.textContent = "人数: "+runnerCount;
     waitOniCount.textContent = oniCount; waitRunnerCount.textContent = runnerCount;
-    if (localPlayer){ playerInfoName.textContent = localPlayer.name; playerInfoTeam.textContent = "チーム: "+localPlayer.team; } else { playerInfoName.textContent="未参加"; playerInfoTeam.textContent="チーム: -"; }
+    if (localPlayer){ playerInfoName.textContent = localPlayer.name; playerInfoTeam.textContent = "チーム: "+localPlayer.team; } else { playerInfoName.textContent = "未参加"; playerInfoTeam.textContent = "チーム: -"; }
     renderPlayerList();
+    // attempt collect / update logic
     for (const s of strawberries) attemptCollectStraw(s);
   });
 
   if (unsubStraw) unsubStraw();
-  unsubStraw = onSnapshot(collection(db, STRAWBERRIES_COL), snap => {
-    const arr=[]; snap.forEach(d=>{ const data=d.data(); data._id=d.id; arr.push(data); });
+  unsubStraw = onSnapshot(collection(db, STRAWBERRIES_COL), (snap) => {
+    const arr = []; snap.forEach(d => { const data = d.data(); data._id = d.id; arr.push(data); });
     strawberries = arr;
+    // ensure strawberries never end up inside walls: if they do, teleport to nearest open spot
+    for (const s of strawberries) ensureStrawInOpenSpace(s);
     for (const s of strawberries) attemptCollectStraw(s);
   });
 
   if (unsubDeliveries) unsubDeliveries();
-  unsubDeliveries = onSnapshot(collection(db, DELIVERIES_COL), snap => {
-    const arr=[]; snap.forEach(d=>{ const data=d.data(); data._id=d.id; arr.push(data); });
+  unsubDeliveries = onSnapshot(collection(db, DELIVERIES_COL), (snap) => {
+    const arr = []; snap.forEach(d => { const data = d.data(); data._id = d.id; arr.push(data); });
     deliveries = arr;
     const occupied = deliveries.filter(d=>d.occupied).length;
     topRunnerRem.textContent = Math.max(0, 4 - occupied);
     if (deliveries.length >= 4 && occupied >= 4){
-      pushLog("逃げチームが全納品所を埋めました！逃げ勝利！", "event");
-      (async ()=>{ const gRef=doc(db,GAME_COLLECTION,GAME_DOC_ID); const gSnap=await getDoc(gRef); const g=gSnap.exists()?gSnap.data():{scores:{oni:0,runner:0}}; await setDoc(gRef,{...g,state:"ended"}); await finalizeAndResetRound(); })();
+      pushLog("逃げチームが全納品所を埋めました：逃げ勝利！","event");
+      (async ()=>{ const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID); const gSnap = await getDoc(gRef); const g = gSnap.exists()?gSnap.data():{scores:{oni:0,runner:0}}; await setDoc(gRef, {...g, state:"ended"}); await finalizeAndResetRound(); })();
     }
   });
 }
 
-function tearDownListeners(){ if(unsubGame)unsubGame(); if(unsubPlayers)unsubPlayers(); if(unsubStraw)unsubStraw(); if(unsubDeliveries)unsubDeliveries(); unsubGame=unsubPlayers=unsubStraw=unsubDeliveries=null; allPlayers=[]; strawberries=[]; deliveries=[]; gameDoc=null; renderPlayerList(); }
+/* tear down */
+function tearDownListeners(){
+  if (unsubWalls) unsubWalls(); unsubWalls=null;
+  if (unsubGame) unsubGame(); unsubGame=null;
+  if (unsubPlayers) unsubPlayers(); unsubPlayers=null;
+  if (unsubStraw) unsubStraw(); unsubStraw=null;
+  if (unsubDeliveries) unsubDeliveries(); unsubDeliveries=null;
+  allPlayers=[]; strawberries=[]; deliveries=[]; walls=[]; gameDoc=null;
+  renderPlayerList();
+}
 
-/* finalize reset */
+/* ensure strawberry not inside wall; if inside, teleport to nearest open tile */
+async function ensureStrawInOpenSpace(straw){
+  // check collision with any wall; if intersects, find random open cell and move there
+  function strawIntersectsWall(s){
+    for (const w of walls){
+      if (s.x >= w.x && s.x <= w.x + w.w && s.y >= w.y && s.y <= w.y + w.h) return true;
+    }
+    return false;
+  }
+  if (strawIntersectsWall(straw)){
+    // find open cell by random attempts
+    for (let i=0;i<30;i++){
+      const cand = randPosCentral();
+      const fakeS = {x:cand.x,y:cand.y};
+      if (!strawIntersectsWall(fakeS)){
+        try { await updateDoc(doc(db, STRAWBERRIES_COL, straw._id), { x: cand.x, y: cand.y, available:true, ownerId:null }); } catch(e){}
+        pushLog("壁と重なっていたイチゴを安全な位置へ移動", "info");
+        break;
+      }
+    }
+  }
+}
+
+/* finalize & reset */
 async function finalizeAndResetRound(){
   try {
-    async function delAll(col){ const snaps=await getDocs(collection(db,col)); const batch=writeBatch(db); for(const d of snaps.docs) batch.delete(d.ref); if(snaps.size) await batch.commit(); }
-    await delAll(PLAYERS_COL); await delAll(STRAWBERRIES_COL); await delAll(DELIVERIES_COL);
-    await setDoc(doc(db,GAME_COLLECTION,GAME_DOC_ID), { state:"waiting", scores:{oni:0,runner:0}, mapSize:MAP_SIZE, runnerRemaining:4, createdAt: serverTimestamp() });
-    pushLog("全データ削除：ラウンドリセット", "event");
+    async function delAll(col){
+      const snaps = await getDocs(collection(db, col));
+      const batch = writeBatch(db);
+      for (const d of snaps.docs) batch.delete(d.ref);
+      if (snaps.size) await batch.commit();
+    }
+    await delAll(PLAYERS_COL);
+    await delAll(STRAWBERRIES_COL);
+    await delAll(DELIVERIES_COL);
+    // keep walls intact to avoid regenerating often; if want new maze each round, delete walls too
+    await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { state:"waiting", scores:{oni:0, runner:0}, mapSize:MAP_SIZE, runnerRemaining:4, createdAt: serverTimestamp() });
+    pushLog("ラウンドを完全リセットしました（プレイヤー/アイテム削除）", "event");
     await seedMapOnce();
-    try{ bgmAudio.pause(); bgmAudio.currentTime=0; }catch(e){}
+    try { bgmAudio.pause(); bgmAudio.currentTime = 0; } catch(e){}
   } catch(e){ console.error("finalize err", e); }
 }
 
-/* Carry mechanics: start carry via transaction that sets ownerId if owner missing or owner absent */
-async function tryStartCarryForNearest(){
+/* Robust carry/pickup implementation:
+   - When player wants to pick up (keydown shift or explicit action), client calls runTransaction:
+       if strawberry.ownerId == null then set ownerId = sessionId, available=false
+     Transaction returns success if acquired.
+   - While carrying, client updates strawberry position to player's pos (throttled).
+   - On release (keyup shift or explicit), releaseCarryById sets ownerId=null/available=true at current pos.
+   - If carrier moves into delivery, checkPlacedOnDelivery marks delivery occupied and strawberry placed.
+   - If any oni near carrier (within CAPTURE_RADIUS*1.2), auto-drop (release).
+*/
+async function tryStartCarryIfNear(){
   if (!localPlayer || !sessionId) return;
   if (localPlayer.team !== "runner") return;
   if (localPlayer.carryingStraw) return;
   // find nearest strawberry within PICKUP_RADIUS
-  let nearest = null; let nd = Infinity;
-  for(const s of strawberries){
+  let nearest = null; let nearestD = Infinity;
+  for (const s of strawberries){
+    if (!s.available && !s.ownerId) continue; // ownerId null expected for available true; still ignore if unavailable
     const d = Math.hypot(localPlayer.x - s.x, localPlayer.y - s.y);
-    if (d <= PICKUP_RADIUS && d < nd){ nearest = s; nd = d; }
+    if (d <= PICKUP_RADIUS && d < nearestD){ nearest = s; nearestD = d; }
   }
   if (!nearest) return;
-  const id = nearest._id;
-  // transaction: set ownerId if null OR owner missing
+  // Attempt transaction to acquire ownership robustly
   try {
     await runTransaction(db, async (t) => {
-      const sRef = doc(db, STRAWBERRIES_COL, id);
+      const sRef = doc(db, STRAWBERRIES_COL, nearest._id);
       const sSnap = await t.get(sRef);
       if (!sSnap.exists()) throw new Error("straw missing");
       const sData = sSnap.data();
-      const owner = sData.ownerId;
-      let allow = false;
-      if (!owner) allow = true;
-      else {
-        // check if owner exists
-        const ownerSnap = await t.get(doc(db, PLAYERS_COL, owner));
-        if (!ownerSnap.exists()) allow = true; // previous owner disconnected
-      }
-      if (allow){
-        t.update(sRef, { ownerId: sessionId, available: false });
-        const pRef = doc(db, PLAYERS_COL, sessionId);
-        t.update(pRef, { carryingStraw: id, lastAction: serverTimestamp() });
-      } else {
-        // someone else holds it; do nothing
-      }
+      if (sData.ownerId) throw new Error("already owned");
+      // set owner
+      t.update(sRef, { ownerId: sessionId, available: false });
+      // set player's carryingStraw
+      const pRef = doc(db, PLAYERS_COL, sessionId);
+      t.update(pRef, { carryingStraw: nearest._id, lastAction: serverTimestamp() });
     });
-    pushLog(`${localPlayer.name} がイチゴを掴みました`, "event");
+    pushLog(`イチゴを掴みました`, "event");
   } catch(e){
-    // transaction failed, maybe someone else grabbed; ignore
+    // failed to acquire (race lost) - ignore
+    // but still try to set if ownerId null (defensive)
+    try {
+      const sDoc = await getDoc(doc(db, STRAWBERRIES_COL, nearest._id));
+      if (sDoc.exists()){
+        const sData = sDoc.data();
+        if (!sData.ownerId){
+          await updateDoc(doc(db, STRAWBERRIES_COL, nearest._id), { ownerId: sessionId, available: false });
+          await updateDoc(doc(db, PLAYERS_COL, sessionId), { carryingStraw: nearest._id, lastAction: serverTimestamp() });
+          pushLog("競合で失敗しましたが補正で掴みました", "info");
+        }
+      }
+    } catch(e){}
   }
 }
 
-/* release carry (place) */
 async function releaseCarryById(strawId){
   if (!strawId) return;
   try {
-    // simply clear ownerId and set available true at current position
-    await runTransaction(db, async (t) => {
-      const sRef = doc(db, STRAWBERRIES_COL, strawId);
-      const sSnap = await t.get(sRef);
-      if (!sSnap.exists()) return;
-      const pRef = doc(db, PLAYERS_COL, sessionId);
-      t.update(sRef, { ownerId: null, available: true, /* keep x,y as is (carrier updated) */ placedAtDelivery: null });
-      t.update(pRef, { carryingStraw: null, lastAction: serverTimestamp() });
-    });
-    pushLog("イチゴを設置しました","info");
-  } catch(e){}
+    const sRef = doc(db, STRAWBERRIES_COL, strawId);
+    await updateDoc(sRef, { ownerId: null, available: true });
+    try { await updateDoc(doc(db, PLAYERS_COL, sessionId), { carryingStraw: null, lastAction: serverTimestamp() }); } catch(e){}
+    pushLog("イチゴを設置しました", "event");
+  } catch(e){ console.error(e); }
 }
 
-/* check placing on delivery */
-async function checkPlacedOnDeliveryForStraw(straw){
+/* checkPlacedOnDelivery */
+async function checkPlacedOnDelivery(straw){
   if (!straw) return;
-  if (straw.ownerId) return; // must be placed (ownerId null) to consider placedAtDelivery (we set placedAtDelivery in transaction below)
-  for(const d of deliveries){
+  if (!straw.ownerId) return; // only carried ones can be placed here via carrier
+  for (const d of deliveries){
+    if (d.occupied) continue;
     const dist = Math.hypot(straw.x - d.x, straw.y - d.y);
-    if (dist <= PICKUP_RADIUS && !d.occupied){
+    if (dist <= PICKUP_RADIUS){
       try {
         await runTransaction(db, async (t) => {
           const dRef = doc(db, DELIVERIES_COL, d._id);
@@ -534,26 +687,26 @@ async function checkPlacedOnDeliveryForStraw(straw){
           if (dData.occupied) return;
           t.update(dRef, { occupied: true, strawberryId: straw._id });
           const sRef = doc(db, STRAWBERRIES_COL, straw._id);
-          t.update(sRef, { placedAtDelivery: d._id, ownerId: null, available: false });
+          t.update(sRef, { ownerId: null, available: false, placedAtDelivery: d._id });
           const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
           const gSnap = await t.get(gRef);
           if (gSnap.exists()){
             const g = gSnap.data();
-            const rem = Math.max(0, (g.runnerRemaining||4)-1);
-            t.update(gRef, { runnerRemaining: rem });
+            const remaining = Math.max(0, (g.runnerRemaining || 4) - 1);
+            t.update(gRef, { runnerRemaining: remaining });
           }
         });
-        pushLog("イチゴが納品所に設置されました","event");
+        pushLog("イチゴが納品所に設置されました", "event");
       } catch(e){}
-      break;
+      return;
     }
   }
 }
 
-/* attemptCollectStraw (legacy auto-collection retained) */
+/* attemptCollectStraw - legacy auto-pickup for >=2 runners near a strawberry */
 async function attemptCollectStraw(straw){
   if (!straw || !straw.available || straw.ownerId) return;
-  const nearby = allPlayers.filter(p => p.team==="runner" && Math.hypot(p.x - straw.x, p.y - straw.y) <= PICKUP_RADIUS);
+  const nearby = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - straw.x, p.y - straw.y) <= PICKUP_RADIUS);
   if (nearby.length >= 2){
     try {
       await runTransaction(db, async (t) => {
@@ -563,7 +716,7 @@ async function attemptCollectStraw(straw){
         const sData = sSnap.data();
         if (!sData.available || sData.ownerId) throw new Error("already taken");
         t.update(sRef, { available: false });
-        for(const p of nearby){
+        for (const p of nearby){
           const pRef = doc(db, PLAYERS_COL, p._id);
           const pSnap = await t.get(pRef);
           if (!pSnap.exists()) continue;
@@ -573,19 +726,19 @@ async function attemptCollectStraw(straw){
       });
       pushLog(`イチゴ回収: ${nearby.map(n=>n.name).join(", ")}`, "event");
       if (STRAW_RESPAWN_IMMEDIATE){
-        try { const newPos = findFreeCellCenter(); await updateDoc(doc(db, STRAWBERRIES_COL, straw._id), { x:newPos.x, y:newPos.y, available:true, ownerId:null, placedAtDelivery:null }); } catch(e){}
+        try { const newPos = randPosCentral(); await updateDoc(doc(db, STRAWBERRIES_COL, straw._id), { x: newPos.x, y: newPos.y, available: true, ownerId: null, placedAtDelivery: null }); } catch(e){}
       }
     } catch(e){}
   }
 }
 
-/* capture check */
+/* capture handling */
 async function checkCapturesAndHandle(){
-  const onis = allPlayers.filter(p => p.team==="oni");
-  const runners = allPlayers.filter(p => p.team==="runner");
+  const onis = allPlayers.filter(p => p.team === "oni");
+  const runners = allPlayers.filter(p => p.team === "runner");
   if (!onis.length || !runners.length) return;
-  for(const r of runners){
-    for(const o of onis){
+  for (const r of runners){
+    for (const o of onis){
       const d = Math.hypot(r.x - o.x, r.y - o.y);
       if (d <= CAPTURE_RADIUS){
         try {
@@ -594,15 +747,21 @@ async function checkCapturesAndHandle(){
             const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
             const s = await t.get(gRef);
             if (!s.exists()) return;
-            const g = s.data(); const scores = g.scores || { oni:0, runner:0 };
-            scores.oni = (scores.oni || 0) + 5; t.update(gRef, { scores, lastUpdated: serverTimestamp() });
+            const g = s.data();
+            const scores = g.scores || { oni:0, runner:0 };
+            scores.oni = (scores.oni || 0) + 5;
+            t.update(gRef, { scores, lastUpdated: serverTimestamp() });
           });
           pushLog(`${r.name} が捕まった！ 鬼チーム +5`, "event");
           explosionAudio.currentTime = 0; explosionAudio.play().catch(()=>{});
-          const gSnap2 = await getDoc(doc(db,GAME_COLLECTION,GAME_DOC_ID));
+          const gSnap2 = await getDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID));
           if (gSnap2.exists()){
             const g2 = gSnap2.data();
-            if ((g2.scores?.oni || 0) >= WIN_SCORE){ pushLog("鬼チーム勝利！", "event"); await setDoc(doc(db,GAME_COLLECTION,GAME_DOC_ID), {...g2, state:"ended"}); await finalizeAndResetRound(); }
+            if ((g2.scores?.oni || 0) >= WIN_SCORE){
+              pushLog("鬼チームが勝利！ラウンド終了します", "event");
+              await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { ...g2, state: "ended" });
+              await finalizeAndResetRound();
+            }
           }
         } catch(e){ console.error(e); }
         break;
@@ -618,56 +777,208 @@ async function sendPositionIfNeeded(x,y){
   if (now - lastPosSend < POSITION_THROTTLE_MS) return;
   lastPosSend = now;
   try { await updateDoc(doc(db, PLAYERS_COL, sessionId), { x, y, lastAction: serverTimestamp() }); } catch(e){}
+  lastLocalMoveTime = Date.now(); // mark optimistic local move
 }
 
-/* DASH */
+/* dash handling */
 function canDash(p){ if (!p || p.team !== "oni") return false; const readyAt = p.dashReadyAt || 0; return Date.now() >= readyAt; }
-async function startDash(){ if (!localPlayer || localPlayer.team!=="oni") return; const now = Date.now(); try{ await updateDoc(doc(db, PLAYERS_COL, sessionId), { dashReadyAt: now + DASH_CT_MS }); localPlayer._isDashingUntil = now + DASH_DUR_MS; setTimeout(()=>{ if (localPlayer) localPlayer._isDashingUntil = 0; }, DASH_DUR_MS); } catch(e){} }
+async function startDash(){ if (!localPlayer || localPlayer.team !== "oni") return; const now = Date.now(); try { await updateDoc(doc(db, PLAYERS_COL, sessionId), { dashReadyAt: now + DASH_CT_MS }); localPlayer._isDashingUntil = now + DASH_DUR_MS; setTimeout(()=>{ if (localPlayer) localPlayer._isDashingUntil = 0; }, DASH_DUR_MS); } catch(e){} }
 
-/* movement / input robust handling */
-const pressed = new Set(); let lastKeyEventTime = Date.now();
-window.addEventListener('keydown', e => {
-  const k=e.key.toLowerCase();
-  if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){ e.preventDefault(); lastKeyEventTime=Date.now(); pressed.add(k);
-    if (k==="shift" && localPlayer && localPlayer.team==="runner" && sessionId){
-      if (!localPlayer.carryingStraw) tryStartCarryForNearest(); else { const strawId = localPlayer.carryingStraw; if (strawId) releaseCarryById(strawId); }
-    }
-  }
-});
-window.addEventListener('keyup', e => {
-  const k=e.key.toLowerCase();
-  if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){ e.preventDefault(); lastKeyEventTime=Date.now(); pressed.delete(k);
-    if (k==="shift" && localPlayer && localPlayer.team==="runner" && sessionId){
-      if (localPlayer.carryingStraw){ const strawId = localPlayer.carryingStraw; if (strawId) releaseCarryById(strawId); }
-    }
-  }
-});
-window.addEventListener('blur', ()=> pressed.clear());
-setInterval(()=>{ if (Date.now() - lastKeyEventTime > 1000) pressed.clear(); }, 1200);
-
-/* local collision with walls: prevent moving into wall */
-function willCollideWithWall(nx,ny){
-  // treat player as point (or small circle radius) and check if that point is inside any wall rect
-  // give small margin equal to 10
-  const margin = 8;
-  for(const w of maze.walls){
-    if (nx >= w.x - margin && nx <= (w.x + w.w) + margin && ny >= w.y - margin && ny <= (w.y + w.h) + margin) return true;
+/* CHECK WALL COLLISION - rectangle-based collision
+   If candidate position collides with wall rect, attempt to slide along axis or block movement.
+*/
+function collidesWithWalls(x,y, radius=12){
+  // simple point-in-rect check with buffer radius
+  for (const w of walls){
+    if (x + radius > w.x && x - radius < w.x + w.w && y + radius > w.y && y - radius < w.y + w.h) return true;
   }
   return false;
 }
 
-/* strawberry update throttle map */
-const lastStrawUpdate = new Map();
+/* Ensure strawberry placed locations are not inside wall; if so teleport to nearest open spot */
+async function ensureStrawInOpenSpace(straw){
+  if (!straw) return;
+  for (const w of walls){
+    if (straw.x >= w.x && straw.x <= w.x + w.w && straw.y >= w.y && straw.y <= w.y + w.h){
+      // find random open cell up to attempts
+      for (let i=0;i<50;i++){
+        const cand = randPosCentral();
+        if (!collidesWithWalls(cand.x, cand.y, 10)){
+          try { await updateDoc(doc(db, STRAWBERRIES_COL, straw._id), { x: cand.x, y: cand.y, available: true, ownerId: null, placedAtDelivery: null }); } catch(e){}
+          break;
+        }
+      }
+      break;
+    }
+  }
+}
 
-/* movement tick: lightweight; heavy tasks run less frequently */
+/* RENDERING - drawing world with walls as filled rectangles and sprites if available */
+function drawTextBubble(ctx, text, x, y, bg="#000", small=false){
+  ctx.save();
+  ctx.font = (small ? "12px sans-serif" : "13px sans-serif");
+  const metrics = ctx.measureText(text);
+  const padX = 8;
+  const w = metrics.width + padX*2;
+  const h = 18;
+  const bx = x - w/2, by = y - h/2;
+  ctx.fillStyle = bg;
+  const r = 8;
+  ctx.beginPath();
+  ctx.moveTo(bx+r, by);
+  ctx.arcTo(bx+w, by, bx+w, by+h, r);
+  ctx.arcTo(bx+w, by+h, bx, by+h, r);
+  ctx.arcTo(bx, by+h, bx, by, r);
+  ctx.arcTo(bx, by, bx+w, by, r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+function drawDirectionHint(ctx, target, self, width, height){
+  const dx = target.x - self.x, dy = target.y - self.y;
+  const angle = Math.atan2(dy, dx);
+  const cx = width/2, cy = height/2;
+  const edgeX = cx + Math.cos(angle) * (Math.min(width,height)/2 - 30);
+  const edgeY = cy + Math.sin(angle) * (Math.min(width,height)/2 - 30);
+  ctx.save(); ctx.translate(edgeX, edgeY); ctx.rotate(angle);
+  ctx.fillStyle = "#ff8"; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-10,-6); ctx.lineTo(-10,6); ctx.closePath(); ctx.fill();
+  const dist = Math.round(Math.hypot(dx,dy));
+  drawTextBubble(ctx, `${target.name} (${dist}m)`, edgeX + 18, edgeY, "#222", true);
+  ctx.restore();
+}
+
+function drawWorld(ctx, width, height, centerPlayer, applyVisibility){
+  ctx.clearRect(0,0,width,height);
+  // camera target and lerp
+  let tx = centerPlayer ? centerPlayer.x : MAP_SIZE/2;
+  let ty = centerPlayer ? centerPlayer.y : MAP_SIZE/2;
+  const halfW = width/2, halfH = height/2;
+  tx = clamp(tx, halfW, MAP_SIZE - halfW);
+  ty = clamp(ty, halfH, MAP_SIZE - halfH);
+  camera.x += (tx - camera.x) * camera.lerp;
+  camera.y += (ty - camera.y) * camera.lerp;
+  const toScreenX = mx => mx - (camera.x - halfW);
+  const toScreenY = my => my - (camera.y - halfH);
+
+  // background map
+  if (mapImageLoaded){
+    const scaleX = width / MAP_SIZE, scaleY = height / MAP_SIZE;
+    ctx.drawImage(mapImage, (-(camera.x - halfW))*scaleX, (-(camera.y - halfH))*scaleY, MAP_SIZE*scaleX, MAP_SIZE*scaleY);
+  } else { ctx.fillStyle="#081018"; ctx.fillRect(0,0,width,height); }
+
+  // walls
+  ctx.fillStyle = "#222";
+  for (const w of walls){
+    const sx = toScreenX(w.x), sy = toScreenY(w.y);
+    ctx.fillRect(sx, sy, w.w, w.h);
+  }
+
+  // deliveries
+  for (const d of deliveries){
+    const sx = toScreenX(d.x), sy = toScreenY(d.y);
+    const color = d.occupied ? "#8be08b" : "#ffd39a";
+    drawTextBubble(ctx, d.occupied ? "△ (設置済)" : "△ 納品所", sx, sy - 26, color);
+    if (sprDeliveryLoaded) ctx.drawImage(sprDelivery, sx-16, sy-16, 32, 32);
+    else { ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(sx, sy-10); ctx.lineTo(sx-10, sy+10); ctx.lineTo(sx+10, sy+10); ctx.closePath(); ctx.fill(); }
+  }
+
+  // strawberries
+  for (const s of strawberries){
+    const sx = toScreenX(s.x), sy = toScreenY(s.y);
+    let visible = true;
+    if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
+      visible = Math.hypot(centerPlayer.x - s.x, centerPlayer.y - s.y) <= VISIBILITY_RADIUS;
+    }
+    if (!visible) continue;
+    drawTextBubble(ctx, "・ イチゴ", sx, sy - 26, "#ff6b8a");
+    if (sprStrawLoaded) ctx.drawImage(sprStraw, sx-10, sy-10, 20, 20);
+    else { ctx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f"; ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI*2); ctx.fill(); }
+    const runnersNear = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - s.x, p.y - s.y) <= PICKUP_RADIUS);
+    if (runnersNear.length === 1){ ctx.strokeStyle="rgba(255,255,128,0.9)"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI*2); ctx.stroke(); ctx.lineWidth=1; }
+  }
+
+  // players
+  for (const p of allPlayers){
+    let visible = true;
+    if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
+      if (p._id === centerPlayer._id) visible = true; else visible = (Math.hypot(centerPlayer.x - p.x, centerPlayer.y - p.y) <= VISIBILITY_RADIUS);
+    }
+    if (!visible) continue;
+    const sx = toScreenX(p.x), sy = toScreenY(p.y);
+    if (p.team === "runner"){ if (sprRunnerLoaded) ctx.drawImage(sprRunner, sx-14, sy-14, 28,28); else { ctx.fillStyle="#4db8ff"; ctx.beginPath(); ctx.arc(sx,sy,12,0,Math.PI*2); ctx.fill(); } }
+    else { if (sprOniLoaded) ctx.drawImage(sprOni, sx-14, sy-14, 28,28); else { ctx.fillStyle="#ffcf4d"; ctx.fillRect(sx-12,sy-12,24,24); } }
+    if (localPlayer && p._id === localPlayer._id){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; if (p.team==="runner"){ctx.beginPath();ctx.arc(sx,sy,15,0,Math.PI*2);ctx.stroke();}else ctx.strokeRect(sx-14,sy-14,28,28); ctx.lineWidth=1; }
+    if (p.team === "runner"){ if (p.carryingStraw) drawTextBubble(ctx, "運搬中", sx, sy - 36, "#2b6b2b"); }
+    drawTextBubble(ctx, p.name, sx, sy + 20, "#000", true);
+  }
+
+  // darkness for runner
+  if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
+    ctx.save(); ctx.fillStyle="rgba(0,0,0,0.6)"; ctx.beginPath(); ctx.rect(0,0,width,height); ctx.arc(width/2, height/2, VISIBILITY_RADIUS, 0, Math.PI*2, true);
+    try{ ctx.fill('evenodd'); }catch(e){ ctx.globalCompositeOperation='destination-out'; ctx.fill(); ctx.globalCompositeOperation='source-over'; } ctx.restore();
+  }
+
+  // nearest teammate hint
+  if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
+    const others = allPlayers.filter(p => p.team === "runner" && p._id !== centerPlayer._id);
+    if (others.length>0){ others.sort((a,b)=> Math.hypot(a.x-centerPlayer.x,a.y-centerPlayer.y) - Math.hypot(b.x-centerPlayer.x,b.y-centerPlayer.y)); drawDirectionHint(gctx, others[0], centerPlayer, width, height); }
+  }
+}
+
+/* draw mini map */
+function drawMiniMap(){
+  miniCtx.clearRect(0,0,miniMap.width,miniMap.height);
+  const w = miniMap.width, h = miniMap.height;
+  miniCtx.fillStyle="#041218"; miniCtx.fillRect(0,0,w,h);
+  if (mapImageLoaded) miniCtx.drawImage(mapImage,0,0,w,h);
+  for (const wd of walls){ const sx = wd.x/MAP_SIZE*w, sy = wd.y/MAP_SIZE*h, sw = wd.w/MAP_SIZE*w, sh = wd.h/MAP_SIZE*h; miniCtx.fillStyle="#222"; miniCtx.fillRect(sx,sy,sw,sh); }
+  for (const d of deliveries){ const sx=d.x/MAP_SIZE*w, sy=d.y/MAP_SIZE*h; const color = d.occupied? "#8be08b":"#ffd39a"; miniCtx.fillStyle=color; miniCtx.beginPath(); miniCtx.moveTo(sx,sy-6); miniCtx.lineTo(sx-6,sy+6); miniCtx.lineTo(sx+6,sy+6); miniCtx.closePath(); miniCtx.fill(); }
+  for (const s of strawberries){ const sx=s.x/MAP_SIZE*w, sy=s.y/MAP_SIZE*h; miniCtx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f"; miniCtx.beginPath(); miniCtx.arc(sx,sy,3,0,Math.PI*2); miniCtx.fill(); }
+  for (const p of allPlayers){ const sx=p.x/MAP_SIZE*w, sy=p.y/MAP_SIZE*h; miniCtx.fillStyle = p.team==="oni" ? "#ffcf4d":"#4db8ff"; miniCtx.beginPath(); miniCtx.arc(sx,sy,3,0,Math.PI*2); miniCtx.fill(); }
+  miniCtx.strokeStyle="rgba(255,255,255,0.06)"; miniCtx.strokeRect(0,0,w,h);
+}
+
+/* render loop */
+function renderLoop(){ requestAnimationFrame(renderLoop); drawWorld(gctx, gameCanvas.width, gameCanvas.height, localPlayer, true); drawMiniMap(); updateDashStatusUI(); updateBoostUI(); }
+renderLoop();
+
+/* input handling robust */
+const pressed = new Set(); let lastKeyEventTime = Date.now();
+window.addEventListener('keydown', (e)=>{
+  const k = e.key.toLowerCase();
+  if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){ e.preventDefault(); lastKeyEventTime = Date.now(); if (!pressed.has(k)) pressed.add(k); // handle shift pick/place toggle on keydown
+    if (k === "shift" && localPlayer && localPlayer.team === "runner"){
+      // if not carrying => try pick; if carrying => place (toggle)
+      if (!localPlayer.carryingStraw) tryStartCarryIfNear();
+      else if (localPlayer.carryingStraw) releaseCarryById(localPlayer.carryingStraw);
+    }
+  }
+});
+window.addEventListener('keyup', (e)=>{
+  const k = e.key.toLowerCase();
+  if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){ e.preventDefault(); lastKeyEventTime = Date.now(); pressed.delete(k);
+    // on shift release, if still carrying, place (so both press-to-toggle and hold-to-carry work)
+    if (k === "shift" && localPlayer && localPlayer.team === "runner"){
+      if (localPlayer.carryingStraw) releaseCarryById(localPlayer.carryingStraw);
+    }
+  }
+});
+window.addEventListener('blur', ()=>{ pressed.clear(); });
+setInterval(()=>{ if (Date.now() - lastKeyEventTime > 1000) pressed.clear(); }, 1200);
+
+/* movement tick: calculate desired pos, check wall collisions; update strawberry if carrying; auto drop if oni near */
 setInterval(async ()=>{
   if (!localPlayer || !sessionId) return;
-  let sp = localPlayer.team==="oni" ? ONI_SPEED : RUNNER_SPEED;
-  if (localPlayer.team==="oni" && (pressed.has("shift")) && canDash(localPlayer)) await startDash();
+  let sp = localPlayer.team === "oni" ? ONI_SPEED : RUNNER_SPEED;
+  if (localPlayer.team === "oni" && (pressed.has("shift")) && canDash(localPlayer)) await startDash();
   if (localPlayer._isDashingUntil && Date.now() < localPlayer._isDashingUntil) sp *= DASH_MULT;
   if (localPlayer.carryingStraw) sp *= CARRY_SPEED_MULT;
-  if (localPlayer.team==="runner"){
-    const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team==="runner" && Math.hypot(p.x - localPlayer.x, p.y - localPlayer.y) <= COOP_BOOST_DIST);
+  if (localPlayer.team === "runner"){
+    const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team === "runner" && Math.hypot(p.x - localPlayer.x, p.y - localPlayer.y) <= COOP_BOOST_DIST);
     if (nearby.length >= 1) sp *= COOP_SPEED_MULT;
   }
   let dx=0, dy=0;
@@ -676,159 +987,148 @@ setInterval(async ()=>{
   if (pressed.has("w") || pressed.has("arrowup")) dy -= 1;
   if (pressed.has("s") || pressed.has("arrowdown")) dy += 1;
   if (dx===0 && dy===0){
-    // if carrying, still update straw position occasionally
-    if (localPlayer.carryingStraw){
-      const strawId = localPlayer.carryingStraw;
-      const now = nowMillis();
-      const last = lastStrawUpdate.get(strawId) || 0;
-      if (now - last > STRAW_UPDATE_THROTTLE_MS){
-        lastStrawUpdate.set(strawId, now);
-        try { await updateDoc(doc(db, STRAWBERRIES_COL, strawId), { x: localPlayer.x, y: localPlayer.y, ownerId: sessionId }); } catch(e){}
-      }
+    // update carried strawberry position even if not moving
+    if (localPlayer.carryingStraw) {
+      try { await updateDoc(doc(db, STRAWBERRIES_COL, localPlayer.carryingStraw), { x: localPlayer.x, y: localPlayer.y, ownerId: sessionId }); } catch(e){}
     }
     return;
   }
-  const mag = Math.hypot(dx,dy) || 1;
-  dx = dx/mag * sp; dy = dy/mag * sp;
-  const nx = clamp(localPlayer.x + dx, 0, MAP_SIZE), ny = clamp(localPlayer.y + dy, 0, MAP_SIZE);
-  // collision with walls: if collision, do not move into wall (simple block)
-  if (willCollideWithWall(nx,ny)){
-    // try slide on x only
-    if (!willCollideWithWall(nx, localPlayer.y)) { localPlayer.x = nx; }
-    else if (!willCollideWithWall(localPlayer.x, ny)) { localPlayer.y = ny; }
-    else { /* blocked */ }
-  } else {
-    localPlayer.x = nx; localPlayer.y = ny;
+  const mag = Math.hypot(dx,dy) || 1; dx = dx/mag * sp; dy = dy/mag * sp;
+  let nx = clamp(localPlayer.x + dx, 0, MAP_SIZE), ny = clamp(localPlayer.y + dy, 0, MAP_SIZE);
+  // wall collision: if new pos collides, attempt axis-aligned sliding
+  if (collidesWithWalls(nx, ny, 12)){
+    // try X move only
+    if (!collidesWithWalls(nx, localPlayer.y, 12)) ny = localPlayer.y;
+    // try Y move only
+    else if (!collidesWithWalls(localPlayer.x, ny, 12)) nx = localPlayer.x;
+    else { nx = localPlayer.x; ny = localPlayer.y; } // blocked
   }
-  // optimistic local move; send position throttled
-  await sendPositionIfNeeded(localPlayer.x, localPlayer.y);
-  // if carrying, update strawberry position throttled
+  // apply
+  localPlayer.x = nx; localPlayer.y = ny;
+  await sendPositionIfNeeded(nx, ny);
+  // update carried strawberry pos
   if (localPlayer.carryingStraw){
-    const strawId = localPlayer.carryingStraw; const now=nowMillis(); const last=lastStrawUpdate.get(strawId)||0;
-    if (now - last > STRAW_UPDATE_THROTTLE_MS){
-      lastStrawUpdate.set(strawId, now);
-      try { await updateDoc(doc(db, STRAWBERRIES_COL, strawId), { x: localPlayer.x, y: localPlayer.y, ownerId: sessionId }); } catch(e){}
-    }
-    // auto place on delivery handled in heavy task
-    // auto force drop when oni very near (but lighter): check local onis
-    const onis = allPlayers.filter(p=>p.team==="oni");
-    for(const o of onis){ const d = Math.hypot(o.x - localPlayer.x, o.y - localPlayer.y); if (d <= CAPTURE_RADIUS*1.1){ const strawId2 = localPlayer.carryingStraw; if (strawId2) { await releaseCarryById(strawId2); pushLog("鬼が近くに来たため強制設置しました","event"); } break; } }
-  } else {
-    // if pressing shift attempt pickup (some browsers might miss keydown); this is fallback
-    if (pressed.has("shift")) tryStartCarryForNearest();
-  }
-}, 80); // 80ms for smoother movement
-
-/* Heavy tasks: capture checks, pickup, placement run less frequently to reduce firestore load */
-setInterval(async ()=>{
-  for(const s of strawberries){
-    // if straw has ownerId but owner missing, clear owner to allow others to pick up
-    if (s.ownerId){
-      const ownerSnap = await getDoc(doc(db, PLAYERS_COL, s.ownerId));
-      if (!ownerSnap.exists()){
-        try { await updateDoc(doc(db, STRAWBERRIES_COL, s._id), { ownerId:null, available:true }); } catch(e){}
+    try { await updateDoc(doc(db, STRAWBERRIES_COL, localPlayer.carryingStraw), { x: nx, y: ny, ownerId: sessionId }); } catch(e){}
+    const straw = strawberries.find(s => s._id === localPlayer.carryingStraw);
+    if (straw) await checkPlacedOnDelivery(straw);
+    // auto-drop if oni close
+    const onis = allPlayers.filter(p => p.team === "oni");
+    for (const o of onis){
+      const d = Math.hypot(o.x - localPlayer.x, o.y - localPlayer.y);
+      if (d <= CAPTURE_RADIUS * 1.2){
+        const strawId = localPlayer.carryingStraw;
+        if (strawId){ await releaseCarryById(strawId); pushLog("鬼が近いためイチゴを強制設置しました", "event"); }
+        break;
       }
     }
-    // if a strawberry has ownerId null but placedAtDelivery not null, skip
-    if (!s.ownerId) { /* attemptCollectStraw will handle multi pickup */ }
-    // If strawberry ownerId is null but close to player we do nothing here (pickup on demand)
+  } else {
+    if (pressed.has("shift")) await tryStartCarryIfNear(); // fallback
   }
+  await tryDeliver(localPlayer);
+  for (const s of strawberries) attemptCollectStraw(s);
   await checkCapturesAndHandle();
-  // check placed on delivery for strawberries that are not owner-held
-  for(const s of strawberries){ if (!s.ownerId && s.available) await checkPlacedOnDeliveryForStraw(s); }
-}, HEAVY_TASK_INTERVAL_MS);
+}, 100);
 
-/* footstep playing for runners */
+/* footstep audible for runners if oni within range (configurable) */
 setInterval(()=>{
   if (!localPlayer) return;
-  if (localPlayer.team==="runner"){
-    const onis = allPlayers.filter(p=>p.team==="oni");
-    for(const o of onis){
+  if (localPlayer.team === "runner"){
+    const onis = allPlayers.filter(p => p.team === "oni");
+    for (const o of onis){
       const d = Math.hypot(o.x - localPlayer.x, o.y - localPlayer.y);
-      if (d <= VISIBILITY_RADIUS * FOOTSTEP_RANGE_MULT){ asiotoAudio.currentTime=0; asiotoAudio.play().catch(()=>{}); break; }
+      if (d <= VISIBILITY_RADIUS * FOOTSTEP_RANGE_MULT){ asiotoAudio.currentTime = 0; asiotoAudio.play().catch(()=>{}); break; }
     }
   }
 }, 900);
 
-/* Render loop (draw maze walls, map, sprites) */
-function drawTextBubble(ctx,text,x,y,bg="#000",small=false){
-  ctx.save(); ctx.font=(small?"12px sans-serif":"13px sans-serif"); const metrics=ctx.measureText(text); const padX=8; const w=metrics.width+padX*2; const h=18; const bx=x-w/2, by=y-h/2; ctx.fillStyle=bg; const r=8; ctx.beginPath(); ctx.moveTo(bx+r,by); ctx.arcTo(bx+w,by,bx+w,by+h,r); ctx.arcTo(bx+w,by+h,bx,by+h,r); ctx.arcTo(bx,by+h,bx,by,r); ctx.arcTo(bx,by,bx+w,by,r); ctx.closePath(); ctx.fill(); ctx.fillStyle="#fff"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(text,x,y); ctx.restore();
+/* player list: hide numeric 🍓, show only '運搬中' */
+function renderPlayerList(){
+  playerListEl.innerHTML = "";
+  const sorted = allPlayers.slice().sort((a,b)=> a.team.localeCompare(b.team) || (a.name||"").localeCompare(b.name));
+  for (const p of sorted){
+    const row = document.createElement("div"); row.className="playerRow";
+    const left = document.createElement("div"); left.style.display="flex"; left.style.gap="8px"; left.style.alignItems="center";
+    const shape = document.createElement("div");
+    shape.style.width="14px"; shape.style.height="14px"; shape.style.borderRadius = p.team==="runner" ? "50%" : "3px";
+    shape.style.background = p.team==="runner" ? "#4db8ff" : "#ffd54d";
+    left.appendChild(shape);
+    const info = document.createElement("div"); info.innerHTML = `<div style="font-weight:700">${p.name}</div><div class="small">${p.team}</div>`;
+    left.appendChild(info);
+    row.appendChild(left);
+    const right = document.createElement("div"); right.style.textAlign="right";
+    const coords = adminMode ? `<div class="small">${Math.round(p.x)},${Math.round(p.y)}</div>` : "";
+    const carryText = p.carryingStraw ? `<div style="font-weight:700">運搬中</div>` : "";
+    right.innerHTML = `${carryText}${coords}`;
+    if (adminMode){
+      const kick = document.createElement("button"); kick.textContent="退出"; kick.style.background="#ff6b6b"; kick.style.border="none"; kick.style.padding="6px"; kick.style.borderRadius="6px";
+      kick.onclick = async ()=>{ if (!confirm(`${p.name} を強制退出しますか？`)) return; try { await deleteDoc(doc(db, PLAYERS_COL, p._id)); pushLog(`${p.name} を管理者が退出させました`, "event"); } catch(e){ alert("退出失敗"); } };
+      right.appendChild(kick);
+    }
+    row.appendChild(right);
+    playerListEl.appendChild(row);
+  }
 }
-function drawWorld(ctx,width,height,centerPlayer,applyVisibility){
-  ctx.clearRect(0,0,width,height);
-  // camera lerp
-  let targetX = centerPlayer ? centerPlayer.x : MAP_SIZE/2; let targetY = centerPlayer ? centerPlayer.y : MAP_SIZE/2;
-  const halfW = width/2, halfH=height/2; targetX = clamp(targetX, halfW, MAP_SIZE-halfW); targetY = clamp(targetY, halfH, MAP_SIZE-halfH);
-  camera.x += (targetX - camera.x) * camera.lerp; camera.y += (targetY - camera.y) * camera.lerp;
-  const toScreenX = mx => mx - (camera.x - halfW); const toScreenY = my => my - (camera.y - halfH);
-  // background map if available
-  if (mapImageLoaded){ const sx = (-(camera.x - halfW)) * (width / MAP_SIZE); const sy = (-(camera.y - halfH)) * (height / MAP_SIZE); ctx.drawImage(mapImage, sx, sy, MAP_SIZE*(width/MAP_SIZE), MAP_SIZE*(height/MAP_SIZE)); } else { ctx.fillStyle="#081018"; ctx.fillRect(0,0,width,height); }
-  // draw walls
-  ctx.fillStyle = "#2b2b2b"; for(const w of maze.walls){ const x = toScreenX(w.x); const y = toScreenY(w.y); const ww = w.w; const hh = w.h; ctx.fillRect(x,y,ww,hh); }
-  // deliveries
-  for(const d of deliveries){ const sx=toScreenX(d.x), sy=toScreenY(d.y); const color = d.occupied ? "#8be08b" : "#ffd39a"; drawTextBubble(ctx, d.occupied ? "△(設置済)" : "△ 納品所", sx, sy-26, color); if (spriteDeliveryLoaded) ctx.drawImage(spriteDelivery, sx-16, sy-16, 32,32); else { ctx.fillStyle=color; ctx.beginPath(); ctx.moveTo(sx,sy-10); ctx.lineTo(sx-10,sy+10); ctx.lineTo(sx+10,sy+10); ctx.closePath(); ctx.fill(); } }
-  // strawberries
-  for(const s of strawberries){ const sx=toScreenX(s.x), sy=toScreenY(s.y); let visible=true; if (applyVisibility && centerPlayer && centerPlayer.team==="runner") visible = Math.hypot(centerPlayer.x - s.x, centerPlayer.y - s.y) <= VISIBILITY_RADIUS; if (!visible) continue; drawTextBubble(ctx,"・ イチゴ", sx, sy-26, "#ff6b8a"); if (spriteStrawLoaded) ctx.drawImage(spriteStraw, sx-10, sy-10, 20,20); else { ctx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f"; ctx.beginPath(); ctx.arc(sx,sy,8,0,Math.PI*2); ctx.fill(); } if (s.ownerId){ drawTextBubble(ctx, "運搬中", sx, sy-34, "#2b6b2b"); } }
-  // players
-  for(const p of allPlayers){ let visible=true; if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ if (p._id === centerPlayer._id) visible=true; else visible = (Math.hypot(centerPlayer.x - p.x, centerPlayer.y - p.y) <= VISIBILITY_RADIUS); } if (!visible) continue; const sx=toScreenX(p.x), sy=toScreenY(p.y); if (p.team==="runner"){ if (spriteRunnerLoaded) ctx.drawImage(spriteRunner, sx-14, sy-14, 28,28); else { ctx.fillStyle="#4db8ff"; ctx.beginPath(); ctx.arc(sx,sy,12,0,Math.PI*2); ctx.fill(); } } else { if (spriteOniLoaded) ctx.drawImage(spriteOni, sx-14, sy-14, 28,28); else { ctx.fillStyle="#ffcf4d"; ctx.fillRect(sx-12,sy-12,24,24); } } if (localPlayer && p._id===localPlayer._id){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; if (p.team==="runner"){ ctx.beginPath(); ctx.arc(sx,sy,15,0,Math.PI*2); ctx.stroke(); } else ctx.strokeRect(sx-14,sy-14,28,28); ctx.lineWidth=1; } if (p.team==="runner" && p.carryingStraw) drawTextBubble(ctx,"運搬中", sx, sy-36, "#2b6b2b"); drawTextBubble(ctx, p.name, sx, sy+20, "#000", true); }
-  // overlay darkness for runner
-  if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ ctx.save(); ctx.fillStyle="rgba(0,0,0,0.6)"; ctx.beginPath(); ctx.rect(0,0,width,height); ctx.arc(width/2,height/2,VISIBILITY_RADIUS,0,Math.PI*2,true); try{ ctx.fill('evenodd'); } catch(e){ ctx.globalCompositeOperation='destination-out'; ctx.fill(); ctx.globalCompositeOperation='source-over'; } ctx.restore(); }
+
+/* dash UI */
+function updateDashStatusUI(){
+  if (!localPlayer){ dashStatusEl.textContent = "ダッシュ: -"; return; }
+  if (localPlayer.team !== "oni"){ dashStatusEl.textContent = "ダッシュ: (鬼のみ)"; return; }
+  const readyAt = localPlayer.dashReadyAt || 0; const now = Date.now();
+  if (now >= readyAt) dashStatusEl.textContent = "ダッシュ: 使用可能"; else dashStatusEl.textContent = `ダッシュ: 使用不可 残り ${Math.ceil((readyAt-now)/1000)}s`;
+}
+function updateBoostUI(){
+  if (!localPlayer){ boostStatusEl.textContent = ""; return; }
+  if (localPlayer.team === "runner"){
+    const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team === "runner" && Math.hypot(p.x - localPlayer.x, p.y - localPlayer.y) <= COOP_BOOST_DIST);
+    if (nearby.length >= 1){ boostStatusEl.textContent = "スピードブースト中（近くに仲間）"; boostStatusEl.style.background = "linear-gradient(90deg,#7fffd4,#2ee6b6)"; }
+    else { boostStatusEl.textContent = ""; boostStatusEl.style.background = "linear-gradient(180deg,#06281f,#0b3940)"; }
+  } else boostStatusEl.textContent = "";
 }
 
-/* minimap */
-function drawMiniMap(){ miniCtx.clearRect(0,0,miniMap.width,miniMap.height); const w=miniMap.width, h=miniMap.height; miniCtx.fillStyle="#041218"; miniCtx.fillRect(0,0,w,h); if (mapImageLoaded) miniCtx.drawImage(mapImage,0,0,w,h); for(const d of deliveries){ const sx=d.x/MAP_SIZE*w, sy=d.y/MAP_SIZE*h; const color=d.occupied?"#8be08b":"#ffd39a"; miniCtx.fillStyle=color; miniCtx.beginPath(); miniCtx.moveTo(sx,sy-6); miniCtx.lineTo(sx-6,sy+6); miniCtx.lineTo(sx+6,sy+6); miniCtx.closePath(); miniCtx.fill(); } for(const s of strawberries){ const sx=s.x/MAP_SIZE*w, sy=s.y/MAP_SIZE*h; miniCtx.fillStyle = s.available? "#ff6b8a" : "#5a2a2f"; miniCtx.beginPath(); miniCtx.arc(sx,sy,3,0,Math.PI*2); miniCtx.fill(); } for(const p of allPlayers){ const sx=p.x/MAP_SIZE*w, sy=p.y/MAP_SIZE*h; miniCtx.fillStyle = p.team==="oni" ? "#ffcf4d" : "#4db8ff"; miniCtx.beginPath(); miniCtx.arc(sx,sy,3,0,Math.PI*2); miniCtx.fill(); } miniCtx.strokeStyle="rgba(255,255,255,0.06)"; miniCtx.strokeRect(0,0,w,h); }
+/* UI hooks */
+toTeamBtn.addEventListener('click', ()=> showScreen("team"));
+chooseOni.addEventListener('click', ()=>{ joinedTeamChoice="oni"; showScreen("join"); });
+chooseRunner.addEventListener('click', ()=>{ joinedTeamChoice="runner"; showScreen("join"); });
+backFromTeam.addEventListener('click', ()=> showScreen("waiting"));
+backFromJoin.addEventListener('click', ()=> showScreen("team"));
+joinNow.addEventListener('click', async ()=>{ const name = (inputName.value||"").trim(); if (!name){ alert("名前を入力してください"); return; } if (!joinedTeamChoice){ alert("チーム選択してください"); return; } await joinAs(name, joinedTeamChoice); joinedTeamChoice=null; inputName.value=""; });
+leaveBtn.addEventListener('click', ()=> leave());
+adminSmall.addEventListener('click', async ()=>{ const pass = prompt("管理パスワードを入力してください:"); if (pass === ADMIN_PASS){ adminMode=true; adminResetBtn.classList.remove("hidden"); alert("管理モード有効"); renderPlayerList(); } else alert("パスワード不正"); });
+adminResetBtn.addEventListener('click', async ()=>{ if (!adminMode) return alert("管理が必要"); if (!confirm("全データ削除しますか？")) return; await finalizeAndResetRound(); });
+homeResetBtn.addEventListener('click', async ()=>{ const pass = prompt("管理パスワード:"); if (pass === ADMIN_PASS) await finalizeAndResetRound(); else alert("違います"); });
 
-/* render loop */
-function renderLoop(){ requestAnimationFrame(renderLoop); drawWorld(gctx, gameCanvas.width, gameCanvas.height, localPlayer, true); drawMiniMap(); updateDashStatusUI(); updateBoostUI(); }
-renderLoop();
-
-/* UI helpers */
-function renderPlayerList(){ playerListEl.innerHTML=""; const sorted = allPlayers.slice().sort((a,b)=> a.team.localeCompare(b.team) || (a.name||"").localeCompare(b.name)); for(const p of sorted){ const row=document.createElement("div"); row.className="playerRow"; const left=document.createElement("div"); left.style.display="flex"; left.style.gap="8px"; left.style.alignItems="center"; const shape=document.createElement("div"); shape.style.width="14px"; shape.style.height="14px"; shape.style.borderRadius=p.team==="runner"?"50%":"3px"; shape.style.background = p.team==="runner"?"#4db8ff":"#ffd54d"; left.appendChild(shape); const info=document.createElement("div"); info.innerHTML=`<div style="font-weight:700">${p.name}</div><div class="small">${p.team}</div>`; left.appendChild(info); row.appendChild(left); const right=document.createElement("div"); right.style.textAlign="right"; const coords = adminMode? `<div class="small">${Math.round(p.x)},${Math.round(p.y)}</div>` : ""; const carryText = p.carryingStraw ? `<div style="font-weight:700">運搬中</div>` : ""; right.innerHTML = `${carryText}${coords}`; if (adminMode){ const kick=document.createElement("button"); kick.textContent="退出"; kick.style.background="#ff6b6b"; kick.style.border="none"; kick.style.padding="6px"; kick.style.borderRadius="6px"; kick.onclick = async ()=>{ if (!confirm(`${p.name} を強制退出しますか？`)) return; try{ await deleteDoc(doc(db,PLAYERS_COL,p._id)); pushLog(`${p.name} を管理者が退出させま��た`,"event"); } catch(e){ alert("退出失敗"); } }; right.appendChild(kick); } row.appendChild(right); playerListEl.appendChild(row); } }
-
-/* update UI statuses */
-function updateDashStatusUI(){ if (!localPlayer){ dashStatusEl.textContent = "ダッシュ: -"; return; } if (localPlayer.team!=="oni"){ dashStatusEl.textContent="ダッシュ: (鬼のみ)"; return; } const readyAt = localPlayer.dashReadyAt || 0; const now = Date.now(); if (now >= readyAt) dashStatusEl.textContent = "ダッシュ: 使用可能"; else dashStatusEl.textContent = `ダッシュ: 使用不可 残り ${Math.ceil((readyAt-now)/1000)}s`; }
-function updateBoostUI(){ if (!localPlayer){ boostStatusEl.textContent = ""; return; } if (localPlayer.team==="runner"){ const nearby = allPlayers.filter(p=>p._id!==localPlayer._id&&p.team==="runner"&&Math.hypot(p.x-localPlayer.x,p.y-localPlayer.y)<=COOP_BOOST_DIST); if (nearby.length>=1){ boostStatusEl.textContent="スピードブースト中（近くに仲間）"; boostStatusEl.style.background="linear-gradient(90deg,#7fffd4,#2ee6b6)"; } else { boostStatusEl.textContent=""; boostStatusEl.style.background="linear-gradient(180deg,#06281f,#0b3940)"; } } else boostStatusEl.textContent=""; }
-
-/* key bindings and input handled earlier; skip duplication */
-
-/* tryStartCarryForNearest and releaseCarryById are defined above */
-
-/* UI actions */
-document.getElementById("toTeamBtn").addEventListener("click", ()=> showScreen("team"));
-chooseOni.addEventListener("click", ()=>{ joinedTeamChoice="oni"; showScreen("join"); });
-chooseRunner.addEventListener("click", ()=>{ joinedTeamChoice="runner"; showScreen("join"); });
-backFromTeam.addEventListener("click", ()=> showScreen("waiting"));
-backFromJoin.addEventListener("click", ()=> showScreen("team"));
-joinNow.addEventListener("click", async ()=>{
-  const name = (inputName.value||"").trim();
-  if (!name){ alert("名前を入力"); return; }
-  if (!joinedTeamChoice){ alert("チーム選択"); return; }
-  await joinAs(name, joinedTeamChoice);
-  joinedTeamChoice = null; inputName.value = "";
-});
-leaveBtn.addEventListener("click", ()=> leave());
-adminSmall.addEventListener("click", async ()=>{
-  const pass = prompt("管理パスワード"); if (pass===ADMIN_PASS){ adminMode=true; adminResetBtn.classList.remove("hidden"); alert("管理モード有効"); renderPlayerList(); } else alert("不正");
-});
-adminResetBtn.addEventListener("click", async ()=>{ if (!adminMode){ alert("管理モード必要"); return; } if (!confirm("全データ削除しますか？")) return; await finalizeAndResetRound(); });
-document.getElementById("homeResetBtn").addEventListener("click", async ()=>{ const pass = prompt("管理パスワード"); if (pass===ADMIN_PASS) await finalizeAndResetRound(); else alert("違います"); });
-
-/* boot */
-(async function boot(){ await ensureGame(); await seedMapOnce(); showScreen("waiting"); updateStatus("待機中"); })();
-
-/* periodic housekeeping (win check) */
+/* periodic win-check & housekeeping */
 setInterval(async ()=>{
   try {
-    const gRef = doc(db,GAME_COLLECTION,GAME_DOC_ID);
-    const gSnap = await getDoc(gRef); if (!gSnap.exists()) return; const g=gSnap.data(); const scores = g.scores || { oni:0, runner:0 };
-    if (g.state==="playing" && (scores.oni>=WIN_SCORE || scores.runner>=WIN_SCORE)){ pushLog("スコア到達でラウンド終了","event"); await setDoc(gRef,{...g,state:"ended"}); await finalizeAndResetRound(); }
+    const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
+    const gSnap = await getDoc(gRef);
+    if (!gSnap.exists()) return;
+    const g = gSnap.data(); const scores = g.scores || { oni:0, runner:0 };
+    if (g.state === "playing" && (scores.oni >= WIN_SCORE || scores.runner >= WIN_SCORE)){
+      pushLog("スコア到達でラウンドを終了します", "event");
+      await setDoc(gRef, { ...g, state: "ended" });
+      await finalizeAndResetRound();
+    }
   } catch(e){}
-},3000);
+}, 3000);
 
-/* finalizeAndResetRound (duplicate safe) */
-async function finalizeAndResetRound(){ try { async function delAll(col){ const snaps=await getDocs(collection(db,col)); const batch=writeBatch(db); for(const d of snaps.docs) batch.delete(d.ref); if(snaps.size) await batch.commit(); } await delAll(PLAYERS_COL); await delAll(STRAWBERRIES_COL); await delAll(DELIVERIES_COL); await setDoc(doc(db,GAME_COLLECTION,GAME_DOC_ID), { state:"waiting", scores:{oni:0,runner:0}, mapSize:MAP_SIZE, runnerRemaining:4, createdAt: serverTimestamp() }); pushLog("全データ削除：ラウンドリセット","event"); await seedMapOnce(); try{ bgmAudio.pause(); bgmAudio.currentTime=0; }catch(e){} } catch(e){ console.error(e); } }
+/* frequent responsiveness checks */
+setInterval(async ()=>{ for (const s of strawberries) attemptCollectStraw(s); await checkCapturesAndHandle(); }, 1200);
 
-/* End of script */
+/* utility: place object in open cell (not colliding with walls) */
+async function placeInOpenArea(docRef, data){
+  for (let i=0;i<60;i++){
+    const p = randPosCentral();
+    if (!collidesWithWalls(p.x, p.y, 12)){
+      try { await updateDoc(docRef, { ...data, x: p.x, y: p.y }); return true; } catch(e){}
+    }
+  }
+  // fallback: put at center
+  try { await updateDoc(docRef, { ...data, x: MAP_SIZE/2, y: MAP_SIZE/2 }); } catch(e){}
+  return false;
+}
+
+/* EOF of code */
 </script>
 </body>
 </html>
