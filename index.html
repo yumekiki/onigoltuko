@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>マルチプレイ基盤 - Firestore v12.7.0</title>
+<style>
+  :root{
+    --bg:#0d0f12; --panel:#111317; --accent:#ff6b6b; --oni:#ffcf4d; --runner:#4db8ff;
+    --muted:#9aa3ad;
+  }
+  body{ margin:0; font-family:system-ui, "Hiragino Kaku Gothic ProN", "メイリオ", sans-serif; background:var(--bg); color:#e6eef6; }
+  #app{ display:flex; height:100vh; }
+  #left{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; gap:16px; }
+  #right{ width:360px; background:linear-gradient(180deg,#0b0d10 0%, #0f1113 100%); box-shadow:-6px 0 18px rgba(0,0,0,.6); padding:16px; display:flex; flex-direction:column; gap:12px; }
+  canvas#gameCanvas{ width:100%; max-width:1280px; height:640px; background:#111; border-radius:8px; display:block; }
+  .panel{ background:var(--panel); padding:12px; border-radius:8px; width:100%; box-sizing:border-box; }
+  .center{ text-align:center; }
+  button{ background:transparent; border:1px solid rgba(255,255,255,0.06); color:inherit; padding:10px 14px; border-radius:8px; cursor:pointer; }
+  .big{ font-size:1.25rem; padding:14px 18px; }
+  .teamBtn{ display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px; }
+  .oniBtn{ background:linear-gradient(90deg,#3a2f00,#6b4e00); }
+  .runnerBtn{ background:linear-gradient(90deg,#003b5c,#006aa0); }
+  .small{ font-size:0.85rem; color:var(--muted); }
+  #topBar{ display:flex; justify-content:space-between; gap:12px; align-items:center; }
+  #scores{ display:flex; gap:12px; align-items:center; }
+  .scoreBox{ background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:8px; display:flex; gap:8px; align-items:center; }
+  #cakeGauge{ width:160px; height:12px; background:rgba(255,255,255,0.04); border-radius:6px; overflow:hidden; }
+  #cakeFill{ height:100%; background:linear-gradient(90deg,#ff9fb0,#ff6b6b); width:0%; }
+  #log{ flex:1; overflow:auto; padding:8px; background:transparent; border-radius:6px; }
+  .logItem{ margin-bottom:6px; font-size:0.95rem; color:#dbe9ff; }
+  .muted{ color:var(--muted); font-size:0.85rem; }
+  #adminSmall{ position:fixed; left:12px; top:12px; background:rgba(0,0,0,0.35); padding:6px 8px; border-radius:6px; font-size:.85rem; cursor:pointer; }
+  .hidden{ display:none; }
+  .nameInput{ padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background:transparent; color:inherit; width:200px; }
+</style>
+</head>
+<body>
+<div id="adminSmall">管理</div>
+<div id="app">
+  <div id="left">
+    <!-- Screens: waiting, team, join, game -->
+    <div id="screen-waiting" class="panel">
+      <div class="center">
+        <h2>観戦モード（待機画面）</h2>
+        <p class="small">現在プレイ中の画面を観戦できます。参加するには下のボタンを押してください。</p>
+        <div style="margin-top:12px;">
+          <button id="toTeamBtn" class="big">参加する</button>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <canvas id="spectateCanvas" width="900" height="500" style="border-radius:8px;"></canvas>
+      </div>
+    </div>
+
+    <div id="screen-team" class="panel hidden">
+      <h2 class="center">チームを選んでください</h2>
+      <div style="display:flex; gap:12px; margin-top:12px;">
+        <div style="flex:1;">
+          <button id="chooseOni" class="teamBtn oniBtn" style="width:100%; color:#222;">
+            <div>
+              <div style="font-weight:700;">👹 鬼チーム</div>
+              <div class="small" id="oniCount">人数: 0</div>
+            </div>
+            <div class="scoreBox">
+              <div class="small">スコア</div><div id="oniScore">0</div>
+            </div>
+          </button>
+        </div>
+        <div style="flex:1;">
+          <button id="chooseRunner" class="teamBtn runnerBtn" style="width:100%; color:#fff;">
+            <div>
+              <div style="font-weight:700;">🏃 逃げチーム</div>
+              <div class="small" id="runnerCount">人数: 0</div>
+            </div>
+            <div class="scoreBox">
+              <div class="small">スコア</div><div id="runnerScore">0</div>
+            </div>
+          </button>
+        </div>
+      </div>
+      <div style="margin-top:10px;" class="muted center">押すとチーム選択画面へ（まだ参加はしません）</div>
+      <div style="margin-top:12px;" class="center">
+        <button id="backFromTeam">戻る</button>
+      </div>
+    </div>
+
+    <div id="screen-join" class="panel hidden">
+      <h2 class="center">名前を入力して参加</h2>
+      <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin-top:8px;">
+        <input id="inputName" class="nameInput" placeholder="名前を入力" maxlength="16" />
+        <button id="joinNow">参加</button>
+      </div>
+      <div style="margin-top:8px;" class="center muted">
+        <button id="backFromJoin">戻る</button>
+      </div>
+    </div>
+
+    <div id="screen-game" class="hidden" style="width:100%;">
+      <div id="topBar" class="panel" style="display:flex; align-items:center;">
+        <div id="scores">
+          <div class="scoreBox">
+            <div style="color:var(--oni); font-weight:700;">👹 鬼: <span id="topOni">0</span></div>
+          </div>
+          <div class="scoreBox">
+            <div style="color:var(--runner); font-weight:700;">🏃 逃げ: <span id="topRunner">0</span></div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="small">共有ケーキ</div>
+          <div id="cakeGauge"><div id="cakeFill"></div></div>
+        </div>
+        <div style="margin-left:auto;">
+          <button id="leaveBtn">離脱</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <canvas id="gameCanvas" width="1200" height="640"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div id="right">
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div id="playerInfoName" style="font-weight:700;">未参加</div>
+          <div class="small" id="playerInfoTeam">チーム: -</div>
+        </div>
+        <div>
+          <div class="small">放置: <span id="idleCount">0</span>s</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="display:flex; flex-direction:column; gap:8px; height:60vh;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-weight:700;">イベントログ</div>
+        <div class="small">視界外のイベントも表示</div>
+      </div>
+      <div id="log" class="muted"></div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button id="adminReset" class="hidden">強制リセット</button>
+        <div class="small" id="statusSmall">状態: 初期</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- audio placeholders: place asioto.mp3 and explosion.mp3 in same dir -->
+<audio id="asioto" src="asioto.mp3" preload="auto"></audio>
+<audio id="explosion" src="explosion.mp3" preload="auto"></audio>
+
+<script type="module">
+/* ============================
+  マルチプレイ基盤 完成版（1ファイル）
+  - Firestore v12.7.0 を利用
+  - ユーザーから提供された firebaseConfig をそのまま使用
+  - 仕様: 画面遷移 / チーム選択 / 名前入力 / プレイ画面 / 管理モード（1122）
+  - イチゴ回収: 近くに2人以上の逃げがいたら、該当の全員に +1（トランザクション）
+  - 納品: 所持分をチームへ加算、共有ケーキゲージを増加
+  - 捕獲: 触れたら所持0にしてランダム再出現、爆発音
+  - 鬼のダッシュ: ShiftでCT/持続を実装
+  - 位置更新はレート制限、放置は30秒で削除
+  ============================ */
+
+/* ===== Firebase imports ===== */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-analytics.js";
+import {
+  getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDoc,
+  onSnapshot, getDocs, query, where, runTransaction, writeBatch,
+  serverTimestamp, Timestamp
+} from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
+
+/* ====== User-provided Firebase config (そのまま貼る) ====== */
+const firebaseConfig = {
+  apiKey: "AIzaSyBmgtx4FW_3_0zy1MvAvZLPHmE_CE1txuE",
+  authDomain: "zzke-ki1.firebaseapp.com",
+  databaseURL: "https://zzke-ki1-default-rtdb.firebaseio.com",
+  projectId: "zzke-ki1",
+  storageBucket: "zzke-ki1.firebasestorage.app",
+  messagingSenderId: "260981230516",
+  appId: "1:260981230516:web:146a29f15b2716a9af80e1",
+  measurementId: "G-GF5G1D4E10"
+};
+
+const app = initializeApp(firebaseConfig);
+try { getAnalytics(app); } catch(e){ console.warn("analytics init failed", e); }
+const db = getFirestore(app);
+
+/* ====== CONSTS (数値調整はここで) ====== */
+const GAME_COLLECTION = "games";
+const GAME_DOC_ID = "current_round";
+const PLAYERS_COL = "players";
+const STRAWBERRIES_COL = "strawberries";
+const DELIVERIES_COL = "deliveries";
+
+const MAP_SIZE = 2000;
+const VISIBILITY_RADIUS = 200;
+const PICKUP_RADIUS = 80;
+const CAPTURE_RADIUS = 36;
+const IDLE_TIMEOUT_SEC = 30;
+const POSITION_THROTTLE_MS = 250;
+const WIN_SCORE = 50;
+
+const RUNNER_SPEED = 2.6;
+const ONI_SPEED = 2.4;
+const DASH_MULT = 1.8;
+const DASH_CT_MS = 10000;
+const DASH_DUR_MS = 3000;
+const COOP_BOOST_DIST = 120;
+const COOP_SPEED_MULT = 1.15;
+
+/* 管理者パスワード（仕様: 1122） */
+const ADMIN_PASS = "1122";
+
+/* ====== CLIENT STATE ====== */
+let sessionId = null;
+let localPlayer = null;
+let allPlayers = [];
+let strawberries = [];
+let deliveries = [];
+let gameDoc = null;
+let lastPosSend = 0;
+let joinedTeamChoice = null; // temporary store when selecting team
+let adminMode = false;
+
+/* UI refs */
+const screens = {
+  waiting: document.getElementById("screen-waiting"),
+  team: document.getElementById("screen-team"),
+  join: document.getElementById("screen-join"),
+  game: document.getElementById("screen-game")
+};
+const spectateCanvas = document.getElementById("spectateCanvas");
+const spectCtx = spectateCanvas.getContext("2d");
+const gameCanvas = document.getElementById("gameCanvas");
+const gctx = gameCanvas.getContext("2d");
+const toTeamBtn = document.getElementById("toTeamBtn");
+const chooseOni = document.getElementById("chooseOni");
+const chooseRunner = document.getElementById("chooseRunner");
+const backFromTeam = document.getElementById("backFromTeam");
+const backFromJoin = document.getElementById("backFromJoin");
+const joinNow = document.getElementById("joinNow");
+const inputName = document.getElementById("inputName");
+const leaveBtn = document.getElementById("leaveBtn");
+const playerInfoName = document.getElementById("playerInfoName");
+const playerInfoTeam = document.getElementById("playerInfoTeam");
+const topOni = document.getElementById("topOni");
+const topRunner = document.getElementById("topRunner");
+const oniCountEl = document.getElementById("oniCount");
+const runnerCountEl = document.getElementById("runnerCount");
+const oniScoreEl = document.getElementById("oniScore");
+const runnerScoreEl = document.getElementById("runnerScore");
+const cakeFill = document.getElementById("cakeFill");
+const logEl = document.getElementById("log");
+const adminSmall = document.getElementById("adminSmall");
+const adminResetBtn = document.getElementById("adminReset");
+const statusSmall = document.getElementById("statusSmall");
+const spectateCanvasEl = spectateCanvas;
+
+/* audio */
+const asiotoAudio = document.getElementById("asioto");
+const explosionAudio = document.getElementById("explosion");
+
+/* listeners unsub */
+let unsubGame = null, unsubPlayers = null, unsubStraw = null, unsubDeliveries = null;
+
+/* ====== UTIL ====== */
+function showScreen(name){
+  for(const k in screens) screens[k].classList.add("hidden");
+  screens[name].classList.remove("hidden");
+}
+function randPos(){ return { x: Math.floor(Math.random()*MAP_SIZE), y: Math.floor(Math.random()*MAP_SIZE) }; }
+function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+function nowMillis(){ return Date.now(); }
+function pushLog(text){
+  const el = document.createElement("div"); el.className="logItem"; el.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+  logEl.prepend(el);
+  // keep max
+  while(logEl.children.length > 80) logEl.removeChild(logEl.lastChild);
+}
+function updateStatus(s){ statusSmall.textContent = "状態: " + s; }
+
+/* ====== FIRESTORE: ensure game doc ====== */
+async function ensureGame(){
+  const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
+  const snap = await getDoc(gRef);
+  if (!snap.exists()){
+    await setDoc(gRef, { state:"waiting", scores:{ oni:0, runner:0 }, mapSize:MAP_SIZE, cakeProgress:0, createdAt: serverTimestamp() });
+  }
+}
+
+/* ====== JOIN / LEAVE ====== */
+async function joinAs(name, team){
+  await ensureGame();
+  const pos = randPos();
+  const pRef = await addDoc(collection(db, PLAYERS_COL), {
+    name: name || "Player",
+    team,
+    x: pos.x, y: pos.y,
+    possession: 0,
+    lastAction: serverTimestamp(),
+    dashReadyAt: 0
+  });
+  sessionId = pRef.id;
+  localPlayer = null; // will be updated by listener
+  setupListeners();
+  showScreen("game");
+  updateStatus("参加中: " + name + " (" + team + ")");
+  pushLog(`${name} が参加しました (チーム: ${team})`);
+}
+
+async function leave(){
+  if (!sessionId) return;
+  try { await deleteDoc(doc(db, PLAYERS_COL, sessionId)); } catch(e){}
+  sessionId = null; localPlayer = null;
+  tearDownListeners();
+  showScreen("waiting");
+  updateStatus("離脱しました");
+}
+
+/* ====== LISTENERS ====== */
+function setupListeners(){
+  // game doc
+  if (unsubGame) unsubGame();
+  unsubGame = onSnapshot(doc(db, GAME_COLLECTION, GAME_DOC_ID), (snap) => {
+    if (!snap.exists()) return;
+    gameDoc = snap.data();
+    topOni.textContent = gameDoc.scores?.oni || 0;
+    topRunner.textContent = gameDoc.scores?.runner || 0;
+    oniScoreEl.textContent = gameDoc.scores?.oni || 0;
+    runnerScoreEl.textContent = gameDoc.scores?.runner || 0;
+    const gauge = Math.min(100, (gameDoc.cakeProgress || 0));
+    cakeFill.style.width = gauge + "%";
+    if (gameDoc.state === "ended"){
+      pushLog(`ラウンド終了: 鬼 ${gameDoc.scores.oni} - 逃げ ${gameDoc.scores.runner}`);
+      setTimeout(async ()=>{ await finalizeAndResetRound(); }, 1200);
+    }
+  });
+
+  // players
+  if (unsubPlayers) unsubPlayers();
+  unsubPlayers = onSnapshot(collection(db, PLAYERS_COL), (snap) => {
+    const arr = [];
+    snap.forEach(d => { const data = d.data(); data._id = d.id; arr.push(data); });
+    allPlayers = arr;
+    // update localPlayer
+    if (sessionId) localPlayer = allPlayers.find(p => p._id === sessionId) || localPlayer;
+    // update counts
+    const oniCount = allPlayers.filter(p => p.team === "oni").length;
+    const runnerCount = allPlayers.filter(p => p.team === "runner").length;
+    oniCountEl.textContent = "人数: " + oniCount;
+    runnerCountEl.textContent = "人数: " + runnerCount;
+    // player info panel
+    if (localPlayer){
+      playerInfoName.textContent = localPlayer.name;
+      playerInfoTeam.textContent = "チーム: " + localPlayer.team;
+    } else {
+      playerInfoName.textContent = "未参加";
+      playerInfoTeam.textContent = "チーム: -";
+    }
+  });
+
+  // strawberries
+  if (unsubStraw) unsubStraw();
+  unsubStraw = onSnapshot(collection(db, STRAWBERRIES_COL), (snap) => {
+    const arr = []; snap.forEach(d => { const data=d.data(); data._id=d.id; arr.push(data); });
+    strawberries = arr;
+  });
+
+  // deliveries
+  if (unsubDeliveries) unsubDeliveries();
+  unsubDeliveries = onSnapshot(collection(db, DELIVERIES_COL), (snap) => {
+    const arr = []; snap.forEach(d => { const data=d.data(); data._id=d.id; arr.push(data); });
+    deliveries = arr;
+  });
+}
+
+function tearDownListeners(){
+  if (unsubGame) unsubGame(); unsubGame = null;
+  if (unsubPlayers) unsubPlayers(); unsubPlayers = null;
+  if (unsubStraw) unsubStraw(); unsubStraw = null;
+  if (unsubDeliveries) unsubDeliveries(); unsubDeliveries = null;
+  allPlayers = []; strawberries = []; deliveries = []; gameDoc = null;
+}
+
+/* ====== PERIODIC HOUSEKEEPING ====== */
+setInterval(async ()=>{
+  // idle delete
+  try{
+    const snaps = await getDocs(collection(db, PLAYERS_COL));
+    const now = Date.now();
+    const batch = writeBatch(db);
+    let doCommit=false;
+    snaps.forEach(d => {
+      const data = d.data();
+      const last = data.lastAction;
+      const lastMs = last && last.toMillis ? last.toMillis() : 0;
+      if (now - lastMs > IDLE_TIMEOUT_SEC*1000){
+        batch.delete(d.ref);
+        doCommit = true;
+        pushLog(`${data.name} が放置により除外されました`);
+      }
+    });
+    if (doCommit) await batch.commit();
+  }catch(e){}
+
+  // win check
+  try{
+    const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
+    await runTransaction(db, async (t) => {
+      const s = await t.get(gRef);
+      if (!s.exists()) return;
+      const g = s.data();
+      const scores = g.scores || {oni:0, runner:0};
+      if (g.state === "playing" && (scores.oni >= WIN_SCORE || scores.runner >= WIN_SCORE)){
+        t.update(gRef, { state:"ended" });
+      }
+    });
+  }catch(e){}
+}, 8000);
+
+/* ====== FINALIZE & RESET ====== */
+async function finalizeAndResetRound(){
+  try{
+    // delete players/strawberries/deliveries
+    async function delAll(col){
+      const snaps = await getDocs(collection(db, col));
+      const batch = writeBatch(db);
+      let any=false;
+      snaps.forEach(d => { batch.delete(d.ref); any=true; });
+      if (any) await batch.commit();
+    }
+    await delAll(PLAYERS_COL);
+    await delAll(STRAWBERRIES_COL);
+    await delAll(DELIVERIES_COL);
+    // reset game doc
+    await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { state:"waiting", scores:{oni:0, runner:0}, cakeProgress:0, mapSize:MAP_SIZE, createdAt: serverTimestamp() });
+    pushLog("ラウンドリセット完了。待機中");
+    updateStatus("待機中");
+    showScreen("team");
+  }catch(e){ console.error(e); }
+}
+
+/* ====== STRAWBERRY COLLECTION RULE (>=2 runners nearby) ====== */
+async function attemptCollectStraw(straw){
+  if (!straw || !straw.available) return;
+  // find nearby runners
+  const nearby = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - straw.x, p.y - straw.y) <= PICKUP_RADIUS);
+  if (nearby.length < 2) return;
+  // Transaction: mark strawberry unavailable and increment possession for all nearby
+  try{
+    await runTransaction(db, async (t) => {
+      const sRef = doc(db, STRAWBERRIES_COL, straw._id);
+      const sSnap = await t.get(sRef);
+      if (!sSnap.exists()) throw new Error("straw missing");
+      const sData = sSnap.data();
+      if (!sData.available) throw new Error("already collected");
+      t.update(sRef, { available:false });
+      for (const p of nearby){
+        const pRef = doc(db, PLAYERS_COL, p._id);
+        const pSnap = await t.get(pRef);
+        if (!pSnap.exists()) continue;
+        const cur = pSnap.data().possession || 0;
+        t.update(pRef, { possession: cur + 1, lastAction: serverTimestamp() });
+      }
+    });
+    pushLog(`イチゴを回収しました（${nearby.map(n=>n.name).join(", ")}）`);
+  }catch(e){
+    // race conditions are expected sometimes
+  }
+}
+
+/* ====== DELIVERY PROCESS ====== */
+async function tryDeliver(player){
+  if (!player || player.team !== "runner") return;
+  const pos = { x: player.x, y: player.y };
+  for (const d of deliveries){
+    const dist = Math.hypot(pos.x - d.x, pos.y - d.y);
+    if (dist <= PICKUP_RADIUS){
+      const amount = player.possession || 0;
+      if (amount <= 0) return;
+      const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
+      const pRef = doc(db, PLAYERS_COL, player._id);
+      try{
+        await runTransaction(db, async (t) => {
+          const gSnap = await t.get(gRef);
+          if (!gSnap.exists()) throw new Error("game missing");
+          const g = gSnap.data();
+          const scores = g.scores || { oni:0, runner:0 };
+          scores.runner = (scores.runner || 0) + amount;
+          const cake = (g.cakeProgress || 0) + amount; // simple mapping
+          t.update(gRef, { scores, cakeProgress: cake, lastUpdated: serverTimestamp() });
+          t.update(pRef, { possession: 0, lastAction: serverTimestamp() });
+        });
+        pushLog(`${player.name} が納品！ +${amount}`);
+      }catch(e){}
+      return;
+    }
+  }
+}
+
+/* ====== CAPTURE CHECK ====== */
+async function checkCapturesAndHandle(){
+  const onis = allPlayers.filter(p => p.team === "oni");
+  const runners = allPlayers.filter(p => p.team === "runner");
+  if (onis.length === 0 || runners.length === 0) return;
+  for (const r of runners){
+    for (const o of onis){
+      const d = Math.hypot(r.x - o.x, r.y - o.y);
+      if (d <= CAPTURE_RADIUS){
+        // capture: set possession 0, respawn random pos
+        try{
+          await updateDoc(doc(db, PLAYERS_COL, r._id), {
+            possession: 0, x: randPos().x, y: randPos().y, lastAction: serverTimestamp()
+          });
+          pushLog(`${r.name} が捕まった！`);
+          explosionAudio.currentTime = 0; explosionAudio.play().catch(()=>{});
+        }catch(e){}
+        break;
+      }
+    }
+  }
+}
+
+/* ====== POSITION UPDATE (throttled) ====== */
+async function sendPositionIfNeeded(x,y){
+  if (!sessionId) return;
+  const now = nowMillis();
+  if (now - lastPosSend < POSITION_THROTTLE_MS) return;
+  lastPosSend = now;
+  try{
+    await updateDoc(doc(db, PLAYERS_COL, sessionId), { x, y, lastAction: serverTimestamp() });
+  }catch(e){}
+}
+
+/* ====== DASH (鬼専用) ====== */
+function canDash(p){
+  if (!p || p.team !== "oni") return false;
+  const readyAt = p.dashReadyAt || 0;
+  return Date.now() >= readyAt;
+}
+async function startDash(){
+  if (!localPlayer || localPlayer.team !== "oni") return;
+  const now = Date.now();
+  await updateDoc(doc(db, PLAYERS_COL, sessionId), { dashReadyAt: now + DASH_CT_MS }); // set next ready
+  localPlayer._isDashingUntil = now + DASH_DUR_MS; // local flag for movement multiplier
+  setTimeout(()=>{ localPlayer._isDashingUntil = 0; }, DASH_DUR_MS);
+}
+
+/* ====== SEED MAP (deliveries & strawberries) ====== */
+async function seedMapOnce(){
+  const dSnap = await getDocs(collection(db, DELIVERIES_COL));
+  if (dSnap.size === 0){
+    const pts = [
+      { x: MAP_SIZE/2, y: MAP_SIZE/2 },
+      { x: 80, y: 80 },
+      { x: MAP_SIZE-80, y: 80 },
+      { x: 80, y: MAP_SIZE-80 },
+      { x: MAP_SIZE-80, y: MAP_SIZE-80 }
+    ];
+    for (const p of pts) await addDoc(collection(db, DELIVERIES_COL), p);
+  }
+  const sSnap = await getDocs(collection(db, STRAWBERRIES_COL));
+  if (sSnap.size === 0){
+    const spts = [
+      { x: 400, y: 400, available:true },
+      { x: 800, y: 700, available:true },
+      { x: 1300, y: 1100, available:true },
+      { x: 1600, y: 500, available:true },
+    ];
+    for (const s of spts) await addDoc(collection(db, STRAWBERRIES_COL), s);
+  }
+}
+
+/* ====== RENDERING: spectate & game ====== */
+function renderSpectate(){
+  requestAnimationFrame(renderSpectate);
+  // simply draw same as game but center on a random or first player
+  const p = allPlayers[0] || { x: MAP_SIZE/2, y: MAP_SIZE/2 };
+  drawWorld(spectCtx, spectateCanvas.width, spectateCanvas.height, p, false);
+}
+function renderGame(){
+  requestAnimationFrame(renderGame);
+  drawWorld(gctx, gameCanvas.width, gameCanvas.height, localPlayer, true);
+}
+function drawWorld(ctx, width, height, centerPlayer, applyVisibility){
+  ctx.clearRect(0,0,width,height);
+  // camera center
+  const camX = centerPlayer ? centerPlayer.x : MAP_SIZE/2;
+  const camY = centerPlayer ? centerPlayer.y : MAP_SIZE/2;
+  const toScreenX = (mx) => (mx - (camX - width/2));
+  const toScreenY = (my) => (my - (camY - height/2));
+  // background
+  ctx.fillStyle = "#0b0c0f";
+  ctx.fillRect(0,0,width,height);
+  // deliveries
+  for (const d of deliveries){
+    const sx = toScreenX(d.x), sy = toScreenY(d.y);
+    ctx.fillStyle = "#ffd39a";
+    ctx.fillRect(sx-10, sy-10, 20, 20);
+  }
+  // strawberries (runners see only inside visibility)
+  for (const s of strawberries){
+    const sx = toScreenX(s.x), sy = toScreenY(s.y);
+    // determine visibility
+    let visible = true;
+    if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
+      const dist = Math.hypot(centerPlayer.x - s.x, centerPlayer.y - s.y);
+      visible = dist <= VISIBILITY_RADIUS;
+    }
+    if (!visible) continue;
+    ctx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f";
+    ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI*2); ctx.fill();
+  }
+  // players
+  for (const p of allPlayers){
+    let visible = true;
+    if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
+      if (p._id === centerPlayer._id) visible = true;
+      else visible = (Math.hypot(centerPlayer.x - p.x, centerPlayer.y - p.y) <= VISIBILITY_RADIUS);
+    }
+    if (!visible) continue;
+    const sx = toScreenX(p.x), sy = toScreenY(p.y);
+    ctx.fillStyle = p.team === "oni" ? "#ffcf4d" : "#4db8ff";
+    ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#000";
+    ctx.font = "12px sans-serif";
+    ctx.fillText(p.name + (p.possession ? " 🍓"+p.possession : ""), sx+14, sy+4);
+  }
+  // runner visibility overlay
+  if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.beginPath();
+    ctx.rect(0,0,width,height);
+    ctx.arc(width/2, height/2, VISIBILITY_RADIUS, 0, Math.PI*2, true);
+    try{ ctx.fill('evenodd'); }catch(e){ ctx.globalCompositeOperation='destination-out'; ctx.fill(); ctx.globalCompositeOperation='source-over'; }
+  }
+}
+
+/* ====== INPUT & MOVEMENT ====== */
+const move = {left:false, right:false, up:false, down:false, dash:false};
+window.addEventListener('keydown', (e)=>{
+  if (e.key === "ArrowLeft" || e.key === "a") move.left = true;
+  if (e.key === "ArrowRight" || e.key === "d") move.right = true;
+  if (e.key === "ArrowUp" || e.key === "w") move.up = true;
+  if (e.key === "ArrowDown" || e.key === "s") move.down = true;
+  if (e.key === "Shift") move.dash = true;
+});
+window.addEventListener('keyup', (e)=>{
+  if (e.key === "ArrowLeft" || e.key === "a") move.left = false;
+  if (e.key === "ArrowRight" || e.key === "d") move.right = false;
+  if (e.key === "ArrowUp" || e.key === "w") move.up = false;
+  if (e.key === "ArrowDown" || e.key === "s") move.down = false;
+  if (e.key === "Shift") move.dash = false;
+});
+
+/* movement tick */
+setInterval(async ()=>{
+  if (!localPlayer || !sessionId) return;
+  // determine base speed
+  let sp = localPlayer.team === "oni" ? ONI_SPEED : RUNNER_SPEED;
+  // dash
+  if (localPlayer.team === "oni" && move.dash && canDash(localPlayer)){
+    // trigger dash (server marks cooldown). we only need to mark once.
+    await startDash();
+  }
+  // apply active dash
+  if (localPlayer._isDashingUntil && Date.now() < localPlayer._isDashingUntil) sp *= DASH_MULT;
+  // coop boost for runners
+  if (localPlayer.team === "runner"){
+    const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team === "runner" && Math.hypot(p.x - localPlayer.x, p.y - localPlayer.y) <= COOP_BOOST_DIST);
+    if (nearby.length >= 1) sp *= COOP_SPEED_MULT;
+  }
+  // compute delta
+  let dx=0, dy=0;
+  if (move.left) dx -= 1;
+  if (move.right) dx += 1;
+  if (move.up) dy -= 1;
+  if (move.down) dy += 1;
+  if (dx===0 && dy===0) return;
+  // normalize
+  const mag = Math.hypot(dx, dy) || 1;
+  dx = dx/mag * sp; dy = dy/mag * sp;
+  let nx = clamp(localPlayer.x + dx, 0, MAP_SIZE);
+  let ny = clamp(localPlayer.y + dy, 0, MAP_SIZE);
+  // optimistic update local
+  localPlayer.x = nx; localPlayer.y = ny;
+  // send position if throttled permits
+  await sendPositionIfNeeded(nx, ny);
+  // try deliver if near
+  await tryDeliver(localPlayer);
+  // try collect nearby strawberries
+  for (const s of strawberries) await attemptCollectStraw(s);
+  // check captures (any client can run)
+  await checkCapturesAndHandle();
+}, 100);
+
+/* ====== Periodic local tasks: sound cues & UI refresh ====== */
+setInterval(()=>{
+  // update idle display for local player
+  if (localPlayer){
+    const last = localPlayer.lastAction;
+    const lastMs = last && last.toMillis ? last.toMillis() : 0;
+    const idle = Math.floor((Date.now() - lastMs)/1000);
+    document.getElementById("idleCount").textContent = idle;
+  } else {
+    document.getElementById("idleCount").textContent = "0";
+  }
+  // oni proximity sound: if local is oni, play footstep when close to any runner beyond visibility (per spec: sound even if not visible)
+  if (localPlayer && localPlayer.team === "oni"){
+    const runners = allPlayers.filter(p => p.team === "runner");
+    for (const r of runners){
+      const d = Math.hypot(r.x - localPlayer.x, r.y - localPlayer.y);
+      if (d <= VISIBILITY_RADIUS*0.7 && d > CAPTURE_RADIUS){
+        asiotoAudio.currentTime = 0; asiotoAudio.play().catch(()=>{});
+        break;
+      }
+    }
+  }
+}, 800);
+
+/* ====== UI EVENT HOOKS ====== */
+toTeamBtn.addEventListener('click', ()=>{ showScreen("team"); });
+chooseOni.addEventListener('click', ()=>{ joinedTeamChoice = "oni"; showScreen("join"); });
+chooseRunner.addEventListener('click', ()=>{ joinedTeamChoice = "runner"; showScreen("join"); });
+backFromTeam.addEventListener('click', ()=>{ showScreen("waiting"); });
+backFromJoin.addEventListener('click', ()=>{ showScreen("team"); });
+joinNow.addEventListener('click', async ()=>{
+  const name = (inputName.value || "").trim();
+  if (!name){ alert("名前を入力してください"); return; }
+  if (!joinedTeamChoice){ alert("チーム選択をしてください"); return; }
+  await joinAs(name, joinedTeamChoice);
+  joinedTeamChoice = null;
+  inputName.value = "";
+  // set game doc to playing if was waiting (first joiner can start)
+  try{
+    const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
+    await runTransaction(db, async (t) => {
+      const s = await t.get(gRef);
+      if (!s.exists()) throw new Error("game missing");
+      const g = s.data();
+      if (g.state === "waiting") t.update(gRef, { state:"playing" });
+    });
+  }catch(e){}
+});
+leaveBtn.addEventListener('click', ()=>{ leave(); });
+
+/* admin UI */
+adminSmall.addEventListener('click', async ()=>{
+  const pass = prompt("管理パスワードを入力してください:");
+  if (pass === ADMIN_PASS){
+    adminMode = true;
+    adminResetBtn.classList.remove("hidden");
+    alert("管理モード有効");
+  } else alert("パスワード不正");
+});
+adminResetBtn.addEventListener('click', async ()=>{
+  if (!adminMode) return alert("管理モードが必要です");
+  if (!confirm("全データを削除してリセットしますか？")) return;
+  await finalizeAndResetRound();
+});
+
+/* ====== BOOTSTRAP ====== */
+(async function bootstrap(){
+  await ensureGame();
+  await seedMapOnce();
+  showScreen("waiting");
+  renderSpectate();
+  renderGame();
+  updateStatus("待機中");
+})();
+
+/* ====== RENDER LOOPS invoked above ====== */
+
+/* ====== NOTES ======
+ - Firestore security: 現状は認証なしでの読み書きを想定しています。運用時はルールを準備してください。
+ - 位置更新・トランザクションは少人数設計向けです（<=30 人）。
+ - オーディオファイル (asioto.mp3, explosion.mp3) を同フォルダに配置してください。
+ - 仕様に合わせ、イチゴは >=2 人で回収すると該当全員に +1 する実装にしています。
+ - 管理パスワードは仕様通り 1122 です（運用時に適宜変更推奨）。
+================== */
+
+</script>
+</body>
+</html>
