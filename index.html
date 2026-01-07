@@ -886,15 +886,29 @@ function renderPlayerList(){
   }
 }
 
-/* dash status UI */
+/☆* dash status UI */
 function updateDashStatusUI(){
-  if (!localPlayer){ dashStatusEl.textContent = "ダッシュ: -"; return; }
-  if (localPlayer.team !== "oni"){ dashStatusEl.textContent = "ダッシュ: (鬼のみ)"; return; }
-  const readyAt = localPlayer.dashReadyAt || 0;
+  if (!localPlayer){
+    dashStatusEl.textContent = "ダッシュ: -";
+    return;
+  }
+
+  if (localPlayer.team !== "oni"){
+    dashStatusEl.textContent = "ダッシュ: 使用不可";
+    return;
+  }
+
   const now = Date.now();
-  if (now >= readyAt) dashStatusEl.textContent = "ダッシュ: 使用可能";
-  else dashStatusEl.textContent = `ダッシュ: 使用不可 残り ${Math.ceil((readyAt-now)/1000)}s`;
+  const readyAt = localPlayer.dashReadyAt || 0;
+
+  if (now >= readyAt){
+    dashStatusEl.textContent = "ダッシュ: 使用可能（Shift）";
+  } else {
+    const remain = Math.ceil((readyAt - now) / 1000);
+    dashStatusEl.textContent = `ダッシュCT: ${remain}s`;
+  }
 }
+
 
 /* boost UI bottom */
 function updateBoostUI(){
