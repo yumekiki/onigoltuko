@@ -3,11 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>マルチ- 完全版（修正版）</title>
+<title>マルチプレイ基盤 - 修正版</title>
 <style>
-  :root{
-    --bg:#0d0f12; --panel:#111317; --oni:#ffcf4d; --runner:#4db8ff; --muted:#9aa3ad;
-  }
+  :root{ --bg:#0d0f12; --panel:#111317; --oni:#ffcf4d; --runner:#4db8ff; --muted:#9aa3ad; }
   *{box-sizing:border-box}
   body{margin:0;font-family:system-ui, "Hiragino Kaku Gothic ProN","メイリオ",sans-serif;background:var(--bg);color:#e6eef6}
   #app{display:flex;gap:12px;padding:12px;height:100vh}
@@ -32,16 +30,19 @@
 </head>
 <body>
 <div id="loadingOverlay">処理中... 少しお待ちください</div>
+
 <div id="app">
   <div id="left">
     <div id="screen-waiting" class="panel">
       <h2>待機 / ルール</h2>
-      <p class="small">参加するを押すとチーム選択へ。管理は右上「管理」。map.png を配置するとマップ背景に反映。</p>
+      <p class="small">参加するを押すとチーム選択へ。map.png を置くとマップ背景に反映。</p>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button id="toTeamBtn" class="big">参加する</button>
         <button id="homeResetBtn" class="big">強制リセット</button>
       </div>
-      <div style="margin-top:8px" class="small">鬼(▢)捕獲:+5点。先に50点で勝ち。イチゴは2人で回収、各+1（ブースト時はブースト中のみ増える処理あり）。</div>
+      <div style="margin-top:8px" class="small">
+        鬼捕獲:+5点。納品で持ち分がチームスコアに加算。先に50点で勝利。
+      </div>
     </div>
 
     <div id="screen-team" class="panel hidden">
@@ -56,7 +57,7 @@
     <div id="screen-join" class="panel hidden">
       <h2>名前を入力して参加</h2>
       <div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:8px">
-        <input id="inputName" class="nameInput" placeholder="名前を入力" maxlength="16" style="padding:8px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;width:220px" />
+        <input id="inputName" maxlength="16" style="padding:8px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;width:220px" placeholder="名前を入力" />
         <button id="joinNow">参加</button>
       </div>
       <div style="margin-top:8px"><button id="backFromJoin">戻る</button></div>
@@ -103,7 +104,7 @@
     <div class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div style="font-weight:700">イベントログ</div>
-        <div class="small">自動で10秒で削除</div>
+        <div class="small">自動で10秒で消えます</div>
       </div>
       <div id="log"></div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
@@ -123,30 +124,15 @@
 <audio id="explosion" src="explosion.mp3" preload="auto"></audio>
 
 <script type="module">
-/* Final fixes & additions per request.
-   Key fixes:
-   - First-join race bug fixed by creating player doc with deterministic client ID (doc(...) then setDoc)
-     and waiting for collection snapshot to include it before proceeding.
-   - Strawberry collection: if >=2 nearby runners and at least two are currently in speed-boost state,
-     only boosted runners get +1; otherwise all nearby runners get +1.
-   - Dash multiplier increased (×2 from previous): DASH_MULT set to large value per request.
-   - Overall speeds multiplied by 1.8.
-   - Footstep range increased moderately.
-   - Logs auto-remove after 10s.
-   - Click-to-move added (click canvas to set target).
-   - Visibility mask centers on player's screen position (fix when at map edge).
-   - Other requested behaviors integrated.
-*/
-
-/* Firebase imports */
+/* 修正版 - 構文エラーを排除した実装（簡潔化）*/
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-analytics.js";
 import {
   getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc, getDoc,
-  onSnapshot, getDocs, runTransaction, writeBatch, serverTimestamp, Timestamp
+  onSnapshot, getDocs, runTransaction, writeBatch, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
-/* ====== CONFIG (your provided config) ====== */
+/* Firebase config - same as provided */
 const firebaseConfig = {
   apiKey: "AIzaSyBmgtx4FW_3_0zy1MvAvZLPHmE_CE1txuE",
   authDomain: "zzke-ki1.firebaseapp.com",
@@ -162,7 +148,7 @@ const app = initializeApp(firebaseConfig);
 try { getAnalytics(app); } catch(e){}
 const db = getFirestore(app);
 
-/* ====== Constants / tuning ====== */
+/* constants */
 const GAME_COLLECTION = "games";
 const GAME_DOC_ID = "current_round";
 const PLAYERS_COL = "players";
@@ -176,29 +162,26 @@ const CAPTURE_RADIUS = 36;
 const POSITION_THROTTLE_MS = 180;
 const WIN_SCORE = 50;
 
-/* base speeds and final multiplier (user requested additional 1.8x on top of previous) */
+/* speeds: overall x1.8 applied */
 let RUNNER_SPEED = 2.6 * 1.5 * 1.8;
 let ONI_SPEED = 2.4 * 1.5 * 1.8;
 
-/* Dash multiplier: user requested earlier ~3x then doubling -> large value (per user) */
-let DASH_MULT = 3.0 * 2.0; // 6.0
+/* dash big multiplier requested (6x) */
+let DASH_MULT = 6.0;
 const DASH_DUR_MS = 3000;
 const DASH_CT_MS = 10000;
 
-/* coop boost and boost-to-strawberry rule */
+/* coop boost */
 const COOP_BOOST_DIST = 120;
 const COOP_SPEED_MULT = 1.3;
 
-/* footstep audible range multiplier (increased moderately, not huge) */
+/* footstep range moderate expansion */
 const FOOTSTEP_RANGE_MULT = 2.0;
 
-/* admin password */
+/* admin pass */
 const ADMIN_PASS = "1122";
 
-/* strawberries respawn */
-const STRAW_RESPAWN_IMMEDIATE = true;
-
-/* ====== Client state ====== */
+/* state */
 let sessionId = null;
 let localPlayer = null;
 let allPlayers = [];
@@ -208,8 +191,6 @@ let gameDoc = null;
 let lastPosSend = 0;
 let joinedTeamChoice = null;
 let adminMode = false;
-
-/* click-to-move target */
 let clickTarget = null;
 
 /* UI refs */
@@ -238,10 +219,6 @@ const playerInfoName = document.getElementById("playerInfoName");
 const playerInfoTeam = document.getElementById("playerInfoTeam");
 const topOni = document.getElementById("topOni");
 const topRunner = document.getElementById("topRunner");
-const oniCountEl = document.getElementById("oniCount");
-const runnerCountEl = document.getElementById("runnerCount");
-const oniScoreEl = document.getElementById("oniScore");
-const runnerScoreEl = document.getElementById("runnerScore");
 const logEl = document.getElementById("log");
 const adminSmall = document.getElementById("adminSmall");
 const adminResetBtn = document.getElementById("adminReset");
@@ -252,20 +229,10 @@ const dashStatusEl = document.getElementById("dashStatus");
 const waitOniCount = document.getElementById("waitOniCount");
 const waitRunnerCount = document.getElementById("waitRunnerCount");
 
-/* audio */
 const asiotoAudio = document.getElementById("asioto");
 const explosionAudio = document.getElementById("explosion");
 
-/* unsub handles */
-let unsubGame = null, unsubPlayers = null, unsubStraw = null, unsubDeliveries = null;
-
-/* map image */
-let mapImage = new Image();
-let mapImageLoaded = false;
-mapImage.src = "map.png";
-mapImage.onload = () => { mapImageLoaded = true; };
-
-/* ===== utility helpers ====== */
+/* helpers */
 function showScreen(name){ for(const k in screens) screens[k].classList.add("hidden"); screens[name].classList.remove("hidden"); }
 function showLoading(on){ loadingOverlay.style.display = on ? "flex" : "none"; }
 function randPos(){ return { x: Math.floor(Math.random()*MAP_SIZE), y: Math.floor(Math.random()*MAP_SIZE) }; }
@@ -273,65 +240,63 @@ function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
 function nowMillis(){ return Date.now(); }
 function updateStatus(s){ statusSmall.textContent = "状態: " + s; }
 
-/* logs auto-remove after 10s */
+/* logs auto-remove 10s */
 function pushLog(text, type="info"){
   const el = document.createElement("div");
-  el.className = "logItem " + (type === "event" ? "log-event" : (type === "error" ? "log-error" : "log-info"));
+  el.className = "logItem " + (type==="event" ? "log-event" : (type==="error" ? "log-error" : "log-info"));
   el.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
   logEl.prepend(el);
-  // auto-remove after 10s
   setTimeout(()=>{ if (el.parentNode) el.parentNode.removeChild(el); }, 10000);
 }
 
-/* ===== Firestore ensure game doc ===== */
+/* ensure game doc exists */
 async function ensureGame(){
   const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
   const snap = await getDoc(gRef);
   if (!snap.exists()){
-    await setDoc(gRef, { state:"waiting", scores:{ oni:0, runner:0 }, mapSize:MAP_SIZE, createdAt: serverTimestamp() });
+    await setDoc(gRef, { state:"waiting", scores:{oni:0, runner:0}, mapSize:MAP_SIZE, createdAt: serverTimestamp() });
   }
 }
 
-/* ===== JOIN: fix first-join race by creating client docRef id and waiting for collection snapshot to include it ===== */
+/* Join: create doc with client-generated id to avoid race, wait for snapshot */
 async function joinAs(name, team){
   showLoading(true);
   await ensureGame();
-  // remove previous same-name docs
+  // remove old same-name docs
   try {
     const snaps = await getDocs(collection(db, PLAYERS_COL));
     for (const d of snaps.docs){
       const data = d.data();
       if (data && data.name === name){
-        try { await deleteDoc(d.ref); pushLog(`古いセッション（${name}）を削除しました`, "info"); } catch(e){}
+        try { await deleteDoc(d.ref); pushLog(`古いセッション（${name}）を削除`, "info"); } catch(e){}
       }
     }
-  } catch(e){ /* ignore */ }
+  } catch(e){}
 
-  // create docRef with client-generated id
-  const playersCollection = collection(db, PLAYERS_COL);
-  const docRef = doc(playersCollection); // generate id but not yet written
-  sessionId = docRef.id;
-  const initialPos = randPos();
+  // create a new doc with client id
+  const collRef = collection(db, PLAYERS_COL);
+  const newDocRef = doc(collRef); // generates id
+  sessionId = newDocRef.id;
+  const pos = randPos();
   try {
-    // write player doc
-    await setDoc(docRef, {
-      name: name || "Player",
-      team,
-      x: initialPos.x, y: initialPos.y,
+    await setDoc(newDocRef, {
+      name: name,
+      team: team,
+      x: pos.x, y: pos.y,
       possession: 0,
       lastAction: serverTimestamp(),
       dashReadyAt: 0
     });
   } catch(e){
     showLoading(false);
-    pushLog("プレイヤー作成に失敗しました: " + e.message, "error");
+    pushLog("参加失敗: " + e.message, "error");
     return;
   }
 
-  // set up listeners BEFORE moving to playing state to avoid race
+  // start listeners before proceeding
   setupListeners();
 
-  // wait for onSnapshot (players listener) to include our sessionId (with timeout)
+  // wait for player to appear in snapshot (timeout)
   const start = Date.now();
   while(true){
     if (allPlayers.find(p => p._id === sessionId)) break;
@@ -339,7 +304,7 @@ async function joinAs(name, team){
     await new Promise(r => setTimeout(r, 150));
   }
 
-  // ensure game state -> playing if waiting
+  // if game doc waiting, set to playing
   try {
     await runTransaction(db, async (t) => {
       const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
@@ -348,41 +313,34 @@ async function joinAs(name, team){
       const g = s.data();
       if (g.state === "waiting") t.update(gRef, { state: "playing" });
     });
-  } catch(e){ /* ignore */ }
+  } catch(e){}
 
   showLoading(false);
   showScreen("game");
-  updateStatus("参加中: " + name + " (" + team + ")");
-  pushLog(`${name} が参加しました (チーム: ${team})`, "event");
+  updateStatus(`参加中: ${name} (${team})`);
+  pushLog(`${name} が参加しました`, "event");
 }
 
-/* ===== leave ===== */
+/* leave */
 async function leave(){
   if (!sessionId) return;
   try { await deleteDoc(doc(db, PLAYERS_COL, sessionId)); } catch(e){}
   sessionId = null; localPlayer = null;
   tearDownListeners();
   showScreen("waiting");
-  updateStatus("離脱しました");
 }
 
-/* ===== listeners ===== */
+/* listeners */
 function setupListeners(){
-  // game doc
   if (unsubGame) unsubGame();
   unsubGame = onSnapshot(doc(db, GAME_COLLECTION, GAME_DOC_ID), (snap) => {
     if (!snap.exists()) return;
     gameDoc = snap.data();
     topOni.textContent = gameDoc.scores?.oni || 0;
     topRunner.textContent = gameDoc.scores?.runner || 0;
-    // if state waiting -> show team
-    if (gameDoc.state === "waiting") {
-      pushLog("ラウンド: 待機状態へ移行", "info");
-      showScreen("team");
-    }
+    if (gameDoc.state === "waiting") { pushLog("サーバ: 待機へ", "info"); showScreen("team"); }
   });
 
-  // players
   if (unsubPlayers) unsubPlayers();
   unsubPlayers = onSnapshot(collection(db, PLAYERS_COL), (snap) => {
     const arr = [];
@@ -392,15 +350,14 @@ function setupListeners(){
     // counts
     const oniCount = allPlayers.filter(p => p.team === "oni").length;
     const runnerCount = allPlayers.filter(p => p.team === "runner").length;
-    document.getElementById("oniCount")?.textContent = "人数: " + oniCount;
-    document.getElementById("runnerCount")?.textContent = "人数: " + runnerCount;
+    document.getElementById("oniCount") && (document.getElementById("oniCount").textContent = "人数: " + oniCount);
+    document.getElementById("runnerCount") && (document.getElementById("runnerCount").textContent = "人数: " + runnerCount);
     waitOniCount.textContent = oniCount;
     waitRunnerCount.textContent = runnerCount;
     if (localPlayer){ playerInfoName.textContent = localPlayer.name; playerInfoTeam.textContent = "チーム: " + localPlayer.team; } else { playerInfoName.textContent = "未参加"; playerInfoTeam.textContent = "チーム: -"; }
     renderPlayerList();
   });
 
-  // strawberries
   if (unsubStraw) unsubStraw();
   unsubStraw = onSnapshot(collection(db, STRAWBERRIES_COL), (snap) => {
     const arr = []; snap.forEach(d => { const data = d.data(); data._id = d.id; arr.push(data); });
@@ -408,7 +365,6 @@ function setupListeners(){
     for (const s of strawberries) attemptCollectStraw(s);
   });
 
-  // deliveries
   if (unsubDeliveries) unsubDeliveries();
   unsubDeliveries = onSnapshot(collection(db, DELIVERIES_COL), (snap) => {
     const arr = []; snap.forEach(d => { const data = d.data(); data._id = d.id; arr.push(data); });
@@ -425,33 +381,29 @@ function tearDownListeners(){
   renderPlayerList();
 }
 
-/* ===== finalize/reset (admin) ===== */
+/* finalize/reset */
 async function finalizeAndResetRound(){
   try {
-    async function delAll(col){
-      const snaps = await getDocs(collection(db, col));
+    async function delAll(name){
+      const snaps = await getDocs(collection(db, name));
       const batch = writeBatch(db);
-      for (const d of snaps.docs) batch.delete(d.ref);
+      snaps.forEach(d => batch.delete(d.ref));
       if (snaps.size > 0) await batch.commit();
     }
     await delAll(PLAYERS_COL);
     await delAll(STRAWBERRIES_COL);
     await delAll(DELIVERIES_COL);
     await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { state:"waiting", scores:{oni:0, runner:0}, mapSize:MAP_SIZE, createdAt: serverTimestamp() });
-    pushLog("管理者: 全データ削除・ラウンドリセット", "event");
+    pushLog("管理: ラウンドをリセットしました", "event");
   } catch(e){ console.error(e); }
 }
 
-/* ===== strawberry collection (boost-aware) =====
-   - If >=2 nearby runners and >=2 of them are in speed-boost state, increment only boosted ones.
-   - Else if >=2 nearby, increment all nearby.
-   - Immediately teleport strawberry to a new random pos (per request).
-*/
+/* strawberry collection (boost-aware) */
 async function attemptCollectStraw(straw){
   if (!straw || !straw.available) return;
   const nearby = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - straw.x, p.y - straw.y) <= PICKUP_RADIUS);
   if (nearby.length < 2) return;
-  // determine boosted runners among nearby: boosted if they have at least one other runner within COOP_BOOST_DIST
+  // boosted runners among nearby (have at least one nearby teammate)
   const boosted = nearby.filter(p => {
     const others = allPlayers.filter(o => o.team === "runner" && o._id !== p._id && Math.hypot(o.x - p.x, o.y - p.y) <= COOP_BOOST_DIST);
     return others.length >= 1;
@@ -464,13 +416,9 @@ async function attemptCollectStraw(straw){
       const sData = sSnap.data();
       if (!sData.available) throw new Error("already collected");
       t.update(sRef, { available: false });
-      // choose recipients
       let recipients;
-      if (boosted.length >= 2){
-        recipients = boosted;
-      } else {
-        recipients = nearby;
-      }
+      if (boosted.length >= 2) recipients = boosted;
+      else recipients = nearby;
       for (const p of recipients){
         const pRef = doc(db, PLAYERS_COL, p._id);
         const pSnap = await t.get(pRef);
@@ -480,15 +428,12 @@ async function attemptCollectStraw(straw){
       }
     });
     pushLog(`イチゴ回収: ${nearby.map(n=>n.name).join(", ")}`, "event");
-    // teleport strawberry immediately to random location and set available true
-    try {
-      const newPos = randPos();
-      await updateDoc(doc(db, STRAWBERRIES_COL, straw._id), { x: newPos.x, y: newPos.y, available: true });
-    } catch(e){}
+    // teleport strawberry immediately
+    try { await updateDoc(doc(db, STRAWBERRIES_COL, straw._id), { x: randPos().x, y: randPos().y, available: true }); } catch(e){}
   } catch(e){}
 }
 
-/* ===== delivery ===== */
+/* delivery */
 async function tryDeliver(player){
   if (!player || player.team !== "runner") return;
   for (const d of deliveries){
@@ -508,12 +453,11 @@ async function tryDeliver(player){
           t.update(doc(db, PLAYERS_COL, player._id), { possession: 0, lastAction: serverTimestamp() });
         });
         pushLog(`${player.name} が納品！ +${amount}`, "event");
-        // check win condition
         const gSnap2 = await getDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID));
         if (gSnap2.exists()){
           const g2 = gSnap2.data();
           if ((g2.scores?.runner || 0) >= WIN_SCORE){
-            pushLog("逃げチームが勝利！ラウンドを終了します。", "event");
+            pushLog("逃げチームが勝利！", "event");
             await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { ...g2, state: "ended" });
             await finalizeAndResetRound();
           }
@@ -524,18 +468,17 @@ async function tryDeliver(player){
   }
 }
 
-/* ===== capture handling (oni catches runner) ===== */
+/* capture */
 async function checkCapturesAndHandle(){
   const onis = allPlayers.filter(p => p.team === "oni");
   const runners = allPlayers.filter(p => p.team === "runner");
-  if (onis.length === 0 || runners.length === 0) return;
+  if (!onis.length || !runners.length) return;
   for (const r of runners){
     for (const o of onis){
       const d = Math.hypot(r.x - o.x, r.y - o.y);
       if (d <= CAPTURE_RADIUS){
         try {
-          await updateDoc(doc(db, PLAYERS_COL, r._id), { possession:0, x: randPos().x, y: randPos().y, lastAction: serverTimestamp() });
-          // add +5 to oni score
+          await updateDoc(doc(db, PLAYERS_COL, r._id), { possession: 0, x: randPos().x, y: randPos().y, lastAction: serverTimestamp() });
           await runTransaction(db, async (t) => {
             const gRef = doc(db, GAME_COLLECTION, GAME_DOC_ID);
             const s = await t.get(gRef);
@@ -547,12 +490,11 @@ async function checkCapturesAndHandle(){
           });
           pushLog(`${r.name} が捕まった！ 鬼チーム +5`, "event");
           explosionAudio.currentTime = 0; explosionAudio.play().catch(()=>{});
-          // check win
           const gSnap2 = await getDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID));
           if (gSnap2.exists()){
             const g2 = gSnap2.data();
             if ((g2.scores?.oni || 0) >= WIN_SCORE){
-              pushLog("鬼チームが勝利！ラウンドを終了します。", "event");
+              pushLog("鬼チームが勝利！", "event");
               await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { ...g2, state: "ended" });
               await finalizeAndResetRound();
             }
@@ -564,7 +506,7 @@ async function checkCapturesAndHandle(){
   }
 }
 
-/* ===== position update throttled ===== */
+/* position update throttled */
 async function sendPositionIfNeeded(x,y){
   if (!sessionId) return;
   const now = nowMillis();
@@ -573,8 +515,8 @@ async function sendPositionIfNeeded(x,y){
   try { await updateDoc(doc(db, PLAYERS_COL, sessionId), { x, y, lastAction: serverTimestamp() }); } catch(e){}
 }
 
-/* ===== dash (oni) ===== */
-function canDash(p){ if (!p || p.team !== "oni") return false; const readyAt = p.dashReadyAt || 0; return Date.now() >= readyAt; }
+/* dash */
+function canDash(p){ if (!p) return false; const readyAt = p.dashReadyAt || 0; return Date.now() >= readyAt; }
 async function startDash(){
   if (!localPlayer || localPlayer.team !== "oni") return;
   const now = Date.now();
@@ -585,259 +527,85 @@ async function startDash(){
   } catch(e){}
 }
 
-/* ===== seed map (corners only) ===== */
+/* seed map */
 async function seedMapOnce(){
   const dSnap = await getDocs(collection(db, DELIVERIES_COL));
   if (dSnap.size === 0){
-    const pts = [
-      { x: 80, y: 80 },
-      { x: MAP_SIZE-80, y: 80 },
-      { x: 80, y: MAP_SIZE-80 },
-      { x: MAP_SIZE-80, y: MAP_SIZE-80 }
-    ];
+    const pts = [{x:80,y:80},{x:MAP_SIZE-80,y:80},{x:80,y:MAP_SIZE-80},{x:MAP_SIZE-80,y:MAP_SIZE-80}];
     for (const p of pts) await addDoc(collection(db, DELIVERIES_COL), p);
   }
   const sSnap = await getDocs(collection(db, STRAWBERRIES_COL));
   if (sSnap.size === 0){
-    const spts = [
-      { x: 400, y: 400, available:true },
-      { x: 800, y: 700, available:true },
-      { x: 1300, y: 1100, available:true },
-      { x: 1600, y: 500, available:true }
-    ];
+    const spts = [{x:400,y:400,available:true},{x:800,y:700,available:true},{x:1300,y:1100,available:true},{x:1600,y:500,available:true}];
     for (const s of spts) await addDoc(collection(db, STRAWBERRIES_COL), s);
   }
 }
 
-/* ===== drawing helpers & visibility fix (use player screen position for mask center) ===== */
+/* drawing helpers and render loops (kept concise) */
 function drawTextBubble(ctx, text, x, y, bg="#000", small=false){
   ctx.save();
   ctx.font = (small ? "12px sans-serif" : "13px sans-serif");
-  const w = ctx.measureText(text).width + 16;
-  const h = 18;
+  const w = ctx.measureText(text).width + 16, h = 18;
   const bx = x - w/2, by = y - h/2;
-  ctx.fillStyle = bg;
-  const r = 8;
-  ctx.beginPath();
-  ctx.moveTo(bx+r,by);
-  ctx.arcTo(bx+w,by,bx+w,by+h,r);
-  ctx.arcTo(bx+w,by+h,bx,by+h,r);
-  ctx.arcTo(bx,by+h,bx,by,r);
-  ctx.arcTo(bx,by,bx+w,by,r);
-  ctx.closePath();
+  ctx.fillStyle = bg; const r = 8;
+  ctx.beginPath(); ctx.moveTo(bx+r,by); ctx.arcTo(bx+w,by,bx+w,by+h,r); ctx.arcTo(bx+w,by+h,bx,by+h,r); ctx.arcTo(bx,by+h,bx,by,r); ctx.arcTo(bx,by,bx+w,by,r); ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text,x,y);
-  ctx.restore();
+  ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(text,x,y); ctx.restore();
 }
 
-function drawDirectionHint(ctx, target, self, width, height){
-  const dx = target.x - self.x, dy = target.y - self.y;
-  const angle = Math.atan2(dy, dx);
-  const cx = width/2, cy = height/2;
-  const edgeX = cx + Math.cos(angle) * (Math.min(width,height)/2 - 30);
-  const edgeY = cy + Math.sin(angle) * (Math.min(width,height)/2 - 30);
-  ctx.save();
-  ctx.translate(edgeX, edgeY);
-  ctx.rotate(angle);
-  ctx.fillStyle = "#ff8";
-  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-10,-6); ctx.lineTo(-10,6); ctx.closePath(); ctx.fill();
-  const dist = Math.round(Math.hypot(dx,dy));
-  drawTextBubble(ctx, `${target.name} (${dist}m)`, edgeX + 18, edgeY, "#222", true);
-  ctx.restore();
+function drawDirectionHint(ctx,target,self,width,height){
+  const dx = target.x - self.x, dy = target.y - self.y; const angle = Math.atan2(dy,dx);
+  const cx = width/2, cy = height/2; const edgeX = cx + Math.cos(angle)*(Math.min(width,height)/2-30); const edgeY = cy + Math.sin(angle)*(Math.min(width,height)/2-30);
+  ctx.save(); ctx.translate(edgeX,edgeY); ctx.rotate(angle); ctx.fillStyle="#ff8"; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-10,-6); ctx.lineTo(-10,6); ctx.closePath(); ctx.fill(); drawTextBubble(ctx, `${target.name} (${Math.round(Math.hypot(dx,dy))}m)`, edgeX+18, edgeY, "#222", true); ctx.restore();
 }
 
-/* draw world: camera clamps but visibility mask centers on player's screen coords (fix) */
-function drawWorld(ctx, width, height, centerPlayer, applyVisibility){
+function drawWorld(ctx,width,height,centerPlayer,applyVisibility){
   ctx.clearRect(0,0,width,height);
-  let camX = centerPlayer ? centerPlayer.x : MAP_SIZE/2;
-  let camY = centerPlayer ? centerPlayer.y : MAP_SIZE/2;
-  const halfW = width/2, halfH = height/2;
-  camX = clamp(camX, halfW, MAP_SIZE - halfW);
-  camY = clamp(camY, halfH, MAP_SIZE - halfH);
-  const toScreenX = (mx) => (mx - (camX - halfW));
-  const toScreenY = (my) => (my - (camY - halfH));
-
-  // map image if any
-  if (mapImageLoaded){
-    const scaleX = width / MAP_SIZE, scaleY = height / MAP_SIZE;
-    ctx.drawImage(mapImage, (-(camX - halfW))*scaleX, (-(camY - halfH))*scaleY, MAP_SIZE*scaleX, MAP_SIZE*scaleY);
-  } else {
-    ctx.fillStyle = "#081018"; ctx.fillRect(0,0,width,height);
-  }
-
-  // deliveries
-  for (const d of deliveries){
-    const sx = toScreenX(d.x), sy = toScreenY(d.y);
-    drawTextBubble(ctx, "△ 納品所", sx, sy - 26, "#ffd39a");
-    ctx.fillStyle = "#ffd39a";
-    ctx.beginPath(); ctx.moveTo(sx, sy-10); ctx.lineTo(sx-10, sy+10); ctx.lineTo(sx+10, sy+10); ctx.closePath(); ctx.fill();
-  }
-
-  // strawberries
-  for (const s of strawberries){
-    const sx = toScreenX(s.x), sy = toScreenY(s.y);
-    let visible = true;
-    if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
-      visible = Math.hypot(centerPlayer.x - s.x, centerPlayer.y - s.y) <= VISIBILITY_RADIUS;
-    }
-    if (!visible) continue;
-    drawTextBubble(ctx, "・ イチゴ", sx, sy - 26, "#ff6b8a");
-    ctx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f";
-    ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI*2); ctx.fill();
-    const runnersNear = allPlayers.filter(p => p.team === "runner" && Math.hypot(p.x - s.x, p.y - s.y) <= PICKUP_RADIUS);
-    if (runnersNear.length === 1){
-      ctx.strokeStyle = "rgba(255,255,128,0.9)"; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI*2); ctx.stroke(); ctx.lineWidth = 1;
-    }
-  }
-
-  // players
-  for (const p of allPlayers){
-    let visible = true;
-    if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
-      if (p._id === centerPlayer._id) visible = true;
-      else visible = (Math.hypot(centerPlayer.x - p.x, centerPlayer.y - p.y) <= VISIBILITY_RADIUS);
-    }
-    if (!visible) continue;
-    const sx = toScreenX(p.x), sy = toScreenY(p.y);
-    if (p.team === "runner"){
-      ctx.fillStyle = "#4db8ff";
-      ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI*2); ctx.fill();
-    } else {
-      ctx.fillStyle = "#ffcf4d";
-      ctx.fillRect(sx-12, sy-12, 24, 24);
-    }
-    if (localPlayer && p._id === localPlayer._id){
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
-      if (p.team === "runner"){ ctx.beginPath(); ctx.arc(sx, sy, 14, 0, Math.PI*2); ctx.stroke(); } else { ctx.strokeRect(sx-14, sy-14, 28, 28); }
-      ctx.lineWidth = 1;
-    }
-    if (p.team === "runner"){
-      const posText = (p.possession ? `🍓${p.possession}` : "🍓0");
-      drawTextBubble(ctx, posText, sx, sy - 34, "#083047");
-    }
-    drawTextBubble(ctx, p.name, sx, sy + 20, "#000", true);
-  }
-
-  // visibility mask center on player's screen coordinates (fix when at edges)
-  if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
-    const playerScreenX = toScreenX(centerPlayer.x);
-    const playerScreenY = toScreenY(centerPlayer.y);
-    ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.beginPath();
-    ctx.rect(0,0,width,height);
-    ctx.arc(playerScreenX, playerScreenY, VISIBILITY_RADIUS, 0, Math.PI*2, true);
-    try{ ctx.fill('evenodd'); } catch(e){ ctx.globalCompositeOperation='destination-out'; ctx.fill(); ctx.globalCompositeOperation='source-over'; }
-    ctx.restore();
-  }
-
-  // direction hint
-  if (applyVisibility && centerPlayer && centerPlayer.team === "runner"){
-    const others = allPlayers.filter(p => p.team === "runner" && p._id !== centerPlayer._id);
-    if (others.length > 0){
-      others.sort((a,b)=> Math.hypot(a.x-centerPlayer.x,a.y-centerPlayer.y) - Math.hypot(b.x-centerPlayer.x,b.y-centerPlayer.y));
-      drawDirectionHint(ctx, others[0], centerPlayer, width, height);
-    }
-  }
+  let camX = centerPlayer ? centerPlayer.x : MAP_SIZE/2; let camY = centerPlayer ? centerPlayer.y : MAP_SIZE/2;
+  const halfW = width/2, halfH = height/2; camX = clamp(camX, halfW, MAP_SIZE-halfW); camY = clamp(camY, halfH, MAP_SIZE-halfH);
+  const toScreenX = mx => (mx - (camX - halfW)); const toScreenY = my => (my - (camY - halfH));
+  ctx.fillStyle = "#081018"; ctx.fillRect(0,0,width,height);
+  for (const d of deliveries){ const sx = toScreenX(d.x), sy = toScreenY(d.y); drawTextBubble(ctx,"△ 納品所",sx,sy-26,"#ffd39a"); ctx.fillStyle="#ffd39a"; ctx.beginPath(); ctx.moveTo(sx,sy-10); ctx.lineTo(sx-10,sy+10); ctx.lineTo(sx+10,sy+10); ctx.closePath(); ctx.fill(); }
+  for (const s of strawberries){ const sx = toScreenX(s.x), sy = toScreenY(s.y); let visible = true; if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ visible = Math.hypot(centerPlayer.x - s.x, centerPlayer.y - s.y) <= VISIBILITY_RADIUS; } if (!visible) continue; drawTextBubble(ctx,"・ イチゴ",sx,sy-26,"#ff6b8a"); ctx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f"; ctx.beginPath(); ctx.arc(sx,sy,8,0,Math.PI*2); ctx.fill(); const runnersNear = allPlayers.filter(p=>p.team==="runner"&&Math.hypot(p.x-s.x,p.y-s.y)<=PICKUP_RADIUS); if (runnersNear.length===1){ ctx.strokeStyle="rgba(255,255,128,0.9)"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sx,sy,12,0,Math.PI*2); ctx.stroke(); ctx.lineWidth=1; } }
+  for (const p of allPlayers){ let visible = true; if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ if (p._id === centerPlayer._id) visible = true; else visible = (Math.hypot(centerPlayer.x - p.x, centerPlayer.y - p.y) <= VISIBILITY_RADIUS); } if (!visible) continue; const sx = toScreenX(p.x), sy = toScreenY(p.y); if (p.team==="runner"){ ctx.fillStyle="#4db8ff"; ctx.beginPath(); ctx.arc(sx,sy,12,0,Math.PI*2); ctx.fill(); } else { ctx.fillStyle="#ffcf4d"; ctx.fillRect(sx-12,sy-12,24,24); } if (localPlayer && p._id===localPlayer._id){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; if (p.team==="runner"){ ctx.beginPath(); ctx.arc(sx,sy,14,0,Math.PI*2); ctx.stroke(); } else { ctx.strokeRect(sx-14,sy-14,28,28); } ctx.lineWidth=1; } if (p.team==="runner"){ const posText = (p.possession ? `🍓${p.possession}` : "🍓0"); drawTextBubble(ctx,posText,sx,sy-34,"#083047"); } drawTextBubble(ctx,p.name,sx,sy+20,"#000",true); }
+  if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ const playerScreenX = toScreenX(centerPlayer.x); const playerScreenY = toScreenY(centerPlayer.y); ctx.save(); ctx.fillStyle="rgba(0,0,0,0.6)"; ctx.beginPath(); ctx.rect(0,0,width,height); ctx.arc(playerScreenX,playerScreenY,VISIBILITY_RADIUS,0,Math.PI*2,true); try{ ctx.fill('evenodd'); } catch(e){ ctx.globalCompositeOperation='destination-out'; ctx.fill(); ctx.globalCompositeOperation='source-over'; } ctx.restore(); }
+  if (applyVisibility && centerPlayer && centerPlayer.team==="runner"){ const others = allPlayers.filter(p=>p.team==="runner"&&p._id!==centerPlayer._id); if (others.length>0){ others.sort((a,b)=>Math.hypot(a.x-centerPlayer.x,a.y-centerPlayer.y)-Math.hypot(b.x-centerPlayer.x,b.y-centerPlayer.y)); drawDirectionHint(gctx, others[0], centerPlayer, width, height); } }
 }
 
-/* minimap draws synchronously */
-function drawMiniMap(){
-  miniCtx.clearRect(0,0,miniMap.width,miniMap.height);
-  const w = miniMap.width, h = miniMap.height;
-  miniCtx.fillStyle = "#041218"; miniCtx.fillRect(0,0,w,h);
-  if (mapImageLoaded) miniCtx.drawImage(mapImage,0,0,w,h);
-  for (const d of deliveries){
-    const sx = d.x / MAP_SIZE * w, sy = d.y / MAP_SIZE * h;
-    miniCtx.fillStyle = "#ffd39a"; miniCtx.beginPath(); miniCtx.moveTo(sx, sy-6); miniCtx.lineTo(sx-6, sy+6); miniCtx.lineTo(sx+6, sy+6); miniCtx.closePath(); miniCtx.fill();
-  }
-  for (const s of strawberries){ const sx = s.x / MAP_SIZE * w, sy = s.y / MAP_SIZE * h; miniCtx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f"; miniCtx.beginPath(); miniCtx.arc(sx, sy, 3,0,Math.PI*2); miniCtx.fill(); }
-  for (const p of allPlayers){ const sx = p.x / MAP_SIZE * w, sy = p.y / MAP_SIZE * h; miniCtx.fillStyle = p.team === "oni" ? "#ffcf4d" : "#4db8ff"; miniCtx.beginPath(); miniCtx.arc(sx, sy, p._id===sessionId?5:3,0,Math.PI*2); miniCtx.fill(); }
-  miniCtx.strokeStyle = "rgba(255,255,255,0.06)"; miniCtx.strokeRect(0,0,w,h);
-}
+/* minimap */
+function drawMiniMap(){ miniCtx.clearRect(0,0,miniMap.width,miniMap.height); const w = miniMap.width, h = miniMap.height; miniCtx.fillStyle="#041218"; miniCtx.fillRect(0,0,w,h); for (const d of deliveries){ const sx=d.x/MAP_SIZE*w, sy=d.y/MAP_SIZE*h; miniCtx.fillStyle="#ffd39a"; miniCtx.beginPath(); miniCtx.moveTo(sx,sy-6); miniCtx.lineTo(sx-6,sy+6); miniCtx.lineTo(sx+6,sy+6); miniCtx.closePath(); miniCtx.fill(); } for (const s of strawberries){ const sx=s.x/MAP_SIZE*w, sy=s.y/MAP_SIZE*h; miniCtx.fillStyle = s.available ? "#ff6b8a" : "#5a2a2f"; miniCtx.beginPath(); miniCtx.arc(sx,sy,3,0,Math.PI*2); miniCtx.fill(); } for (const p of allPlayers){ const sx=p.x/MAP_SIZE*w, sy=p.y/MAP_SIZE*h; miniCtx.fillStyle = p.team==="oni" ? "#ffcf4d" : "#4db8ff"; miniCtx.beginPath(); miniCtx.arc(sx,sy,p._id===sessionId?5:3,0,Math.PI*2); miniCtx.fill(); } miniCtx.strokeStyle="rgba(255,255,255,0.06)"; miniCtx.strokeRect(0,0,w,h); }
 
-/* main render loop */
+/* render loop */
 function renderLoop(){ requestAnimationFrame(renderLoop); drawWorld(gctx, gameCanvas.width, gameCanvas.height, localPlayer, true); drawMiniMap(); updateDashStatusUI(); updateBoostUI(); }
 renderLoop();
 
-/* ===== input: WASD and click-to-move; fix stuck by robust pressed set ===== */
+/* input: WASD and click-to-move */
 const pressed = new Set();
 let lastKeyEventTime = Date.now();
-
-window.addEventListener('keydown', (e)=>{
-  const k = e.key.toLowerCase();
-  if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){
-    e.preventDefault();
-    lastKeyEventTime = Date.now();
-    pressed.add(k);
-  }
-});
-window.addEventListener('keyup', (e)=>{
-  const k = e.key.toLowerCase();
-  if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){
-    e.preventDefault();
-    lastKeyEventTime = Date.now();
-    pressed.delete(k);
-  }
-});
+window.addEventListener('keydown', (e)=>{ const k = e.key.toLowerCase(); if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){ e.preventDefault(); lastKeyEventTime = Date.now(); pressed.add(k); } });
+window.addEventListener('keyup', (e)=>{ const k = e.key.toLowerCase(); if (["arrowleft","arrowright","arrowup","arrowdown","a","s","d","w","shift"].includes(k)){ e.preventDefault(); lastKeyEventTime = Date.now(); pressed.delete(k); } });
 window.addEventListener('blur', ()=> pressed.clear());
 setInterval(()=>{ if (Date.now() - lastKeyEventTime > 1000) pressed.clear(); }, 1200);
 
-/* click-to-move: convert canvas coords to world coords and set clickTarget */
-gameCanvas.addEventListener('click', (ev)=>{
-  if (!localPlayer) return;
-  const rect = gameCanvas.getBoundingClientRect();
-  const cx = ev.clientX - rect.left, cy = ev.clientY - rect.top;
-  // compute camera as in drawWorld
-  let camX = localPlayer.x, camY = localPlayer.y;
-  const halfW = gameCanvas.width/2, halfH = gameCanvas.height/2;
-  camX = clamp(camX, halfW, MAP_SIZE - halfW);
-  camY = clamp(camY, halfH, MAP_SIZE - halfH);
-  const worldX = (cx + (camX - halfW));
-  const worldY = (cy + (camY - halfH));
-  clickTarget = { x: clamp(worldX,0,MAP_SIZE), y: clamp(worldY,0,MAP_SIZE) };
-});
+gameCanvas.addEventListener('click', (ev)=>{ if (!localPlayer) return; const rect = gameCanvas.getBoundingClientRect(); const cx = ev.clientX - rect.left, cy = ev.clientY - rect.top; let camX = localPlayer.x, camY = localPlayer.y; const halfW = gameCanvas.width/2, halfH = gameCanvas.height/2; camX = clamp(camX, halfW, MAP_SIZE-halfW); camY = clamp(camY, halfH, MAP_SIZE-halfH); const worldX = cx + (camX - halfW); const worldY = cy + (camY - halfH); clickTarget = { x: clamp(worldX,0,MAP_SIZE), y: clamp(worldY,0,MAP_SIZE) }; });
 
-/* movement tick: WASD has priority; if no keys pressed and clickTarget exists, move toward it */
+/* movement tick */
 setInterval(async ()=>{
   if (!localPlayer || !sessionId) return;
   let sp = localPlayer.team === "oni" ? ONI_SPEED : RUNNER_SPEED;
-  // dash trigger (Shift)
-  if (localPlayer.team === "oni" && (pressed.has("shift")) && canDash(localPlayer)){
-    await startDash();
-  }
+  if (localPlayer.team === "oni" && (pressed.has("shift")) && canDash(localPlayer)) await startDash();
   if (localPlayer._isDashingUntil && Date.now() < localPlayer._isDashingUntil) sp *= DASH_MULT;
-  // coop boost
-  if (localPlayer.team === "runner"){
-    const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team === "runner" && Math.hypot(p.x - localPlayer.x, p.y - localPlayer.y) <= COOP_BOOST_DIST);
-    if (nearby.length >= 1) sp *= COOP_SPEED_MULT;
-  }
-
-  // WASD / arrows
+  if (localPlayer.team === "runner"){ const nearby = allPlayers.filter(p=>p._id!==localPlayer._id && p.team==="runner" && Math.hypot(p.x-localPlayer.x,p.y-localPlayer.y)<=COOP_BOOST_DIST); if (nearby.length>=1) sp *= COOP_SPEED_MULT; }
   let dx=0, dy=0;
-  if (pressed.has("a") || pressed.has("arrowleft")) dx -= 1;
-  if (pressed.has("d") || pressed.has("arrowright")) dx += 1;
-  if (pressed.has("w") || pressed.has("arrowup")) dy -= 1;
-  if (pressed.has("s") || pressed.has("arrowdown")) dy += 1;
-
-  if (dx === 0 && dy === 0 && clickTarget){
-    const vx = clickTarget.x - localPlayer.x;
-    const vy = clickTarget.y - localPlayer.y;
-    const dist = Math.hypot(vx,vy);
-    if (dist < 6){ clickTarget = null; return; }
-    dx = vx / (dist || 1);
-    dy = vy / (dist || 1);
-  }
-
-  if (dx === 0 && dy === 0) return;
+  if (pressed.has("a")||pressed.has("arrowleft")) dx -= 1;
+  if (pressed.has("d")||pressed.has("arrowright")) dx += 1;
+  if (pressed.has("w")||pressed.has("arrowup")) dy -= 1;
+  if (pressed.has("s")||pressed.has("arrowdown")) dy += 1;
+  if (dx===0 && dy===0 && clickTarget){ const vx = clickTarget.x - localPlayer.x, vy = clickTarget.y - localPlayer.y, dist = Math.hypot(vx,vy); if (dist < 6){ clickTarget = null; return; } dx = vx / (dist||1); dy = vy / (dist||1); }
+  if (dx===0 && dy===0) return;
   const mag = Math.hypot(dx,dy) || 1;
   dx = dx/mag * sp; dy = dy/mag * sp;
-  const nx = clamp(localPlayer.x + dx, 0, MAP_SIZE);
-  const ny = clamp(localPlayer.y + dy, 0, MAP_SIZE);
+  const nx = clamp(localPlayer.x + dx, 0, MAP_SIZE); const ny = clamp(localPlayer.y + dy, 0, MAP_SIZE);
   localPlayer.x = nx; localPlayer.y = ny;
   await sendPositionIfNeeded(nx, ny);
   await tryDeliver(localPlayer);
@@ -845,126 +613,58 @@ setInterval(async ()=>{
   await checkCapturesAndHandle();
 }, 100);
 
-/* footstep sound: heard by runners if oni within moderate range */
+/* footstep */
 setInterval(()=>{
   if (!localPlayer) return;
   if (localPlayer.team === "runner"){
-    const onis = allPlayers.filter(p => p.team === "oni");
-    for (const o of onis){
-      const d = Math.hypot(o.x - localPlayer.x, o.y - localPlayer.y);
-      if (d <= VISIBILITY_RADIUS * FOOTSTEP_RANGE_MULT){
-        asiotoAudio.currentTime = 0; asiotoAudio.play().catch(()=>{});
-        break;
-      }
-    }
+    const onis = allPlayers.filter(p=>p.team==="oni");
+    for (const o of onis){ const d = Math.hypot(o.x - localPlayer.x, o.y - localPlayer.y); if (d <= VISIBILITY_RADIUS * FOOTSTEP_RANGE_MULT){ asiotoAudio.currentTime = 0; asiotoAudio.play().catch(()=>{}); break; } }
   }
 }, 900);
 
-/* ===== player list rendering (admin kick + coords for admin) ===== */
+/* player list render */
 function renderPlayerList(){
   playerListEl.innerHTML = "";
   const sorted = allPlayers.slice().sort((a,b)=> a.team.localeCompare(b.team) || (a.name||"").localeCompare(b.name));
   for (const p of sorted){
     const row = document.createElement("div"); row.className="playerRow";
     const left = document.createElement("div"); left.style.display="flex"; left.style.gap="8px"; left.style.alignItems="center";
-    const shape = document.createElement("div"); shape.style.width="14px"; shape.style.height="14px"; shape.style.borderRadius = p.team==="runner" ? "50%" : "3px";
-    shape.style.background = p.team === "runner" ? "#4db8ff" : "#ffd54d";
-    left.appendChild(shape);
-    const info = document.createElement("div"); info.innerHTML = `<div style="font-weight:700">${p.name}</div><div class="small">${p.team}</div>`;
-    left.appendChild(info);
+    const shape = document.createElement("div"); shape.style.width="14px"; shape.style.height="14px"; shape.style.borderRadius = p.team==="runner" ? "50%" : "3px"; shape.style.background = p.team==="runner" ? "#4db8ff" : "#ffd54d"; left.appendChild(shape);
+    const info = document.createElement("div"); info.innerHTML = `<div style="font-weight:700">${p.name}</div><div class="small">${p.team}</div>`; left.appendChild(info);
     row.appendChild(left);
     const right = document.createElement("div"); right.style.textAlign="right";
     const coords = adminMode ? `<div class="small" style="color:#9fb8c8">${Math.round(p.x)},${Math.round(p.y)}</div>` : "";
-    right.innerHTML = `<div style="font-weight:700">${p.possession || 0}🍓</div>${coords}`;
-    if (adminMode){
-      const kick = document.createElement("button"); kick.className="kickBtn"; kick.textContent = "退出";
-      kick.onclick = async () => { if (!confirm(`${p.name} を強制退出しますか？`)) return; try { await deleteDoc(doc(db, PLAYERS_COL, p._id)); pushLog(`${p.name} を管理者が退出させました`, "event"); } catch(e){ alert("退出に失敗しました"); } };
-      right.appendChild(kick);
-    }
+    right.innerHTML = `<div style="font-weight:700">${p.possession||0}🍓</div>${coords}`;
+    if (adminMode){ const kick = document.createElement("button"); kick.className="kickBtn"; kick.textContent="退出"; kick.onclick = async ()=>{ if (!confirm(`${p.name} を強制退出しますか？`)) return; try { await deleteDoc(doc(db, PLAYERS_COL, p._id)); pushLog(`${p.name} を管理者が退出させました`, "event"); } catch(e){ alert("退出失敗"); } }; right.appendChild(kick); }
     row.appendChild(right);
     playerListEl.appendChild(row);
   }
 }
 
-/* dash status UI */
-function updateDashStatusUI(){
-  if (!localPlayer){ dashStatusEl.textContent = "ダッシュ: -"; return; }
-  if (localPlayer.team !== "oni"){ dashStatusEl.textContent = "ダッシュ: (鬼のみ)"; return; }
-  const readyAt = localPlayer.dashReadyAt || 0;
-  const now = Date.now();
-  if (now >= readyAt) dashStatusEl.textContent = "ダッシュ: 使用可能";
-  else dashStatusEl.textContent = `ダッシュ: 使用不可 残り ${Math.ceil((readyAt-now)/1000)}s`;
-}
+/* dash UI and boost UI */
+function updateDashStatusUI(){ if (!localPlayer) { dashStatusEl.textContent = "ダッシュ: -"; return; } if (localPlayer.team !== "oni"){ dashStatusEl.textContent = "ダッシュ: (鬼のみ)"; return; } const readyAt = localPlayer.dashReadyAt || 0; const now = Date.now(); if (now >= readyAt) dashStatusEl.textContent = "ダッシュ: 使用可能"; else dashStatusEl.textContent = `ダッシュ: 使用不可 残り ${Math.ceil((readyAt-now)/1000)}s`; }
+function updateBoostUI(){ if (!localPlayer) { boostStatusEl.textContent = ""; return; } if (localPlayer.team === "runner"){ const nearby = allPlayers.filter(p=>p._id!==localPlayer._id && p.team==="runner" && Math.hypot(p.x-localPlayer.x,p.y-localPlayer.y)<=COOP_BOOST_DIST); if (nearby.length>=1){ boostStatusEl.textContent = "スピードブースト中（近くに仲間）"; boostStatusEl.style.background = "linear-gradient(90deg,#7fffd4,#2ee6b6)"; } else { boostStatusEl.textContent = ""; boostStatusEl.style.background = ""; } } else { boostStatusEl.textContent = ""; boostStatusEl.style.background = ""; } }
 
-/* boost UI bottom */
-function updateBoostUI(){
-  if (!localPlayer) { boostStatusEl.textContent = ""; return; }
-  if (localPlayer.team === "runner"){
-    const nearby = allPlayers.filter(p => p._id !== localPlayer._id && p.team === "runner" && Math.hypot(p.x - localPlayer.x, p.y - localPlayer.y) <= COOP_BOOST_DIST);
-    if (nearby.length >= 1){
-      boostStatusEl.textContent = "スピードブースト中（近くに仲間）";
-      boostStatusEl.style.background = "linear-gradient(90deg,#7fffd4,#2ee6b6)";
-    } else {
-      boostStatusEl.textContent = "";
-      boostStatusEl.style.background = "";
-    }
-  } else {
-    boostStatusEl.textContent = "";
-    boostStatusEl.style.background = "";
-  }
-}
-
-/* ===== UI hooks ===== */
+/* UI hooks */
 toTeamBtn.addEventListener('click', ()=> showScreen("team"));
-chooseOni.addEventListener('click', ()=>{ joinedTeamChoice = "oni"; showScreen("join"); });
-chooseRunner.addEventListener('click', ()=>{ joinedTeamChoice = "runner"; showScreen("join"); });
+chooseOni.addEventListener('click', ()=> { joinedTeamChoice = "oni"; showScreen("join"); });
+chooseRunner.addEventListener('click', ()=> { joinedTeamChoice = "runner"; showScreen("join"); });
 backFromTeam.addEventListener('click', ()=> showScreen("waiting"));
 backFromJoin.addEventListener('click', ()=> showScreen("team"));
-joinNow.addEventListener('click', async ()=>{
-  const name = (inputName.value || "").trim();
-  if (!name){ alert("名前を入力してください"); return; }
-  if (!joinedTeamChoice){ alert("チームを選んでください"); return; }
-  await joinAs(name, joinedTeamChoice);
-  joinedTeamChoice = null; inputName.value = "";
-});
+joinNow.addEventListener('click', async ()=> { const name = (inputName.value||"").trim(); if (!name) { alert("名前を入力してください"); return; } if (!joinedTeamChoice) { alert("チームを選んでください"); return; } await joinAs(name, joinedTeamChoice); joinedTeamChoice = null; inputName.value = ""; });
 leaveBtn.addEventListener('click', ()=> leave());
+adminSmall.addEventListener('click', async ()=> { const pass = prompt("管理パスワードを入力してください:"); if (pass===ADMIN_PASS){ adminMode = true; adminResetBtn.classList.remove("hidden"); alert("管理モード有効"); renderPlayerList(); } else alert("違います"); });
+adminResetBtn.addEventListener('click', async ()=> { if (!adminMode) return alert("管理モードが必要です"); if (!confirm("全データ削除しますか？")) return; await finalizeAndResetRound(); });
+homeResetBtn.addEventListener('click', async ()=> { const pass = prompt("管理パスワードを入力してください:"); if (pass===ADMIN_PASS) await finalizeAndResetRound(); else alert("違います"); });
 
-adminSmall.addEventListener('click', async ()=>{
-  const pass = prompt("管理パスワードを入力してください:");
-  if (pass === ADMIN_PASS){ adminMode = true; adminResetBtn.classList.remove("hidden"); alert("管理モード有効"); renderPlayerList(); } else alert("パスワード不正");
-});
-adminResetBtn.addEventListener('click', async ()=>{ if (!adminMode) return alert("管理モードが必要"); if (!confirm("全データ削除してリセットしますか？")) return; await finalizeAndResetRound(); });
-homeResetBtn.addEventListener('click', async ()=>{ const pass = prompt("管理パスワード入力"); if (pass === ADMIN_PASS) await finalizeAndResetRound(); else alert("違います"); });
+/* boot */
+(async function boot(){ await ensureGame(); await seedMapOnce(); showScreen("waiting"); updateStatus("待機中"); })();
 
-/* ===== boot ===== */
-(async function boot(){
-  await ensureGame();
-  await seedMapOnce();
-  showScreen("waiting");
-  updateStatus("待機中");
-})();
-
-/* ===== periodic tasks ===== */
-/* check captures and strawberry attempts frequently for responsiveness */
+/* housekeeping */
 setInterval(async ()=>{ for (const s of strawberries) attemptCollectStraw(s); await checkCapturesAndHandle(); }, 900);
+setInterval(async ()=>{ try { const gSnap = await getDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID)); if (!gSnap.exists()) return; const g = gSnap.data(); const scores = g.scores || {oni:0, runner:0}; if (g.state === "playing" && (scores.oni >= WIN_SCORE || scores.runner >= WIN_SCORE)){ pushLog("勝利条件到達: ラウンド終了処理", "event"); await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { ...g, state: "ended" }); await finalizeAndResetRound(); } } catch(e){} }, 3000);
 
-/* win-check by reading game doc every 3s (final safety) */
-setInterval(async ()=>{
-  try {
-    const gSnap = await getDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID));
-    if (!gSnap.exists()) return;
-    const g = gSnap.data();
-    const scores = g.scores || {oni:0, runner:0};
-    if (g.state === "playing" && (scores.oni >= WIN_SCORE || scores.runner >= WIN_SCORE)){
-      pushLog("スコア到達によりラウンド終了処理を実行します。", "event");
-      await setDoc(doc(db, GAME_COLLECTION, GAME_DOC_ID), { ...g, state: "ended" });
-      await finalizeAndResetRound();
-    }
-  } catch(e){}
-}, 3000);
-
-/* ===== Done ===== */
-console.log("Client initialized. Please place map.png, asioto.mp3, explosion.mp3 as needed.");
+console.log("修正版ロード完了。map.png, asioto.mp3, explosion.mp3 を配置してください。");
 </script>
 </body>
 </html>
